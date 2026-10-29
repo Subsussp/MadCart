@@ -9,15 +9,14 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@types/three": "^0.186.0",
-    "typescript": "~6.0.3",
     "vite": "^8.3.4"
   },
   "dependencies": {
+    "cannon-es": "^0.20.0",
     "three": "^0.186.1"
   },
   "allowScripts": {
     "three@0.186.1": true,
-    "@types/three@0.186.0": true
+    "cannon@0.6.2": true
   }
 }
