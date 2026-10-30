@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import './style.css'
-import * as CANNON from "cannon-es"
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 let width = window.innerWidth
 let height = window.innerHeight
+let previousT = 0;
 
 let renderer = new THREE.WebGLRenderer({antialias:true})
 renderer.setSize(window.innerWidth,window.innerHeight)
@@ -14,11 +14,18 @@ let camera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
 let ambient = new THREE.AmbientLight("white")
 const controls = new OrbitControls( camera, renderer.domElement );
 
+
+let body = function(mesh){
+    this.mesh = mesh
+    this.position = new THREE.Vector3(0,0,0)
+    this.velocity = new THREE.Vector3(0,0,0)
+    this.accelration = new  THREE.Vector3(0,0,0)
+}
+
+
 camera.position.set(0,1,-0.1)
 scene.add(camera)
 scene.add(ambient)
-let cannonWorld = new CANNON.World()
-cannonWorld.gravity.set(0,0,-9.81)
 
 let dracoLoader = new DRACOLoader()
 let loader = new GLTFLoader()
@@ -35,38 +42,31 @@ let crazyCart = data.scene
 let ccScene = crazyCart
 scene.add(ccScene);
 console.log(scene)
-
-let chassis = new CANNON.Body({
-    mass: 150,
-    shape: new CANNON.Box(
-        new CANNON.Vec3(0.8, 0.3, 1.2)
-    ),
-    position: new CANNON.Vec3(0, 2, 0)
-
-});
-cannonWorld.addBody(chassis);
-
-const groundBody = new CANNON.Body({
-    mass: 0,
-    shape: new CANNON.Plane()
-});
-
-groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-
-cannonWorld.addBody(groundBody);
-animate();
+let ccBody = new body(ccScene)
 
 
-function animate() {
+animate(0);
+
+window.addEventListener('keydown',(e)=>{
+    if(e.code == "KeyW"){
+        ccBody.velocity.setZ(ccBody.velocity.z - 0.02)
+        // ccBody.velocity.setZ(ccBody.velocity.z - 0.02)
+    }
+    if(e.code == "KeyS"){
+        ccBody.velocity.setZ(ccBody.velocity.z + 0.02)
+        // ccBody.velocity.setZ(ccBody.velocity.z + 0.02)
+    }
+    console.log(ccBody);
+    
+})
+function animate(time) {    
+    let deltaTime =  (time / 1000 - previousT).toFixed(3)
+    previousT = time / 1000
+    ccBody.velocity.addScaledVector(ccBody.accelration, deltaTime);
+    ccScene.position.addScaledVector(ccBody.velocity,+deltaTime);
+	controls.update();
+    renderer.render(scene, camera);
     requestAnimationFrame(animate);
 
-    // cannonWorld.fixedStep();
-
-    // ccScene.position.copy(chassis.position);
-    // ccScene.quaternion.copy(chassis.quaternion);
-	controls.update();
-
-    renderer.render(scene, camera);
 }
-
 

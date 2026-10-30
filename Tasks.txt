@@ -1,0 +1,4 @@
+modify the 3d model in blender and group certain things like the shaft bar that controls the wheels and maybe change the color of the cart?
+
+connecting the position of the camera with the cart movement
+adding helpers?? not sure 
