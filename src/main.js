@@ -66,6 +66,15 @@ let Cart = function(mass,mesh){
     this.prevX = 0.0, this.prevZ = 0.0
     this.yaw = 0
     this.motorForce = new THREE.Vector3(0,0,0)
+    this.parts =[new wheel(0.3,0.2032), new wheel(0.2,0.076),new wheel(0.2,0.076)]
+}
+let wheel = function(mass,radius,mesh){
+    this.mass = mass
+    this.radius = radius
+
+    this.slipAngle = 0
+    this.angularV = 0
+    this.angularInertia = 1/2 * this.mass * radius * radius
 }
 
 Cart.prototype.calcuateNetforce = function() {
@@ -127,7 +136,7 @@ function animate(time) {
 
 	controls.update();
 	pcontrols.update();
-    renderer.render(scene, camera);
+    renderer.render(scene, povcamera );
     requestAnimationFrame(animate);
 
 }
