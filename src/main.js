@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls, PointerLockControls } from 'three/examples/jsm/Addons.js';
 let width = window.innerWidth
 let height = window.innerHeight
 // everything that has to do with Three js and the visual state/drawing
@@ -12,14 +12,14 @@ renderer.setSize(window.innerWidth,window.innerHeight)
 let scene = new THREE.Scene()
 let camera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
 let povcamera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
-let grid = new THREE.GridHelper(100,20)
+let grid = new THREE.GridHelper(200,100)
 let axes = new THREE.AxesHelper()
 let ambient = new THREE.AmbientLight("white")
-const controls = new OrbitControls( povcamera, renderer.domElement );
+const pcontrols = new OrbitControls( povcamera, renderer.domElement );
+const controls = new PointerLockControls( camera, renderer.domElement );
 
-
-camera.position.set(0,1,1.1)
-camera.lookAt(0,0,-.9)
+camera.position.set(0,0.6,.11)
+camera.lookAt(0,0.5,-.9)
 povcamera.position.set(0,1,-0.1)
 scene.add(grid)
 scene.add(axes)
@@ -38,6 +38,7 @@ let chelper = new THREE.CameraHelper(camera)
 let data = await loader.loadAsync("/assets/Crazy_Cart.glb")
 let crazyCart = data.scene
 let cccGroup = new THREE.Group()
+
 let ccScene = crazyCart
 cccGroup.add(ccScene);
 cccGroup.add(camera)
@@ -86,16 +87,16 @@ Cart.prototype.calcuateDrag = function(drag){
 
 
 let ccBody = new Cart(1500,ccScene)
-let pressure = 0
-window.addEventListener('webkitmouseforcechanged', (event) => {
-    pressure = event.webkitForce
-    console.log(pressure)
-});
+
+// THROTTLE USING TRACKPAD PRESSURE 
+// let pressure = 0
+// window.addEventListener('webkitmouseforcechanged', (event) => {
+//     pressure = event.webkitForce
+// });
+
 function step(dt){
     let inputs = readInput()
-
-    ccBody.vz = (pressure *pressure * pressure) / 27 * 0.5
-
+    ccBody.vz = inputs.throttle && 1 / 120
     ccBody.prevX = ccBody.x
     ccBody.prevZ = ccBody.z
 
@@ -125,12 +126,21 @@ function animate(time) {
     draw(accumulator / CFG.dt)
 
 	controls.update();
+	pcontrols.update();
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
 
 }
 
 
+
+window.addEventListener('mousedown',()=>{
+    controls.isLocked = true
+})
+
+window.addEventListener('mouseup',()=>{
+    controls.isLocked = false
+})
 
 // Player Controls
 

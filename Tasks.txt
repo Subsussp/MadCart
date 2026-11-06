@@ -1,4 +1,6 @@
 modify the 3d model in blender and group certain things like the shaft bar that controls the wheels and maybe change the color of the cart?
 
-connecting the position of the camera with the cart movement
-adding helpers?? not sure 
+Implementing throttle increase using MacBook trackpad pressure (increasing motor power depending on the pressure of the trackpad) 
+
+connecting the position of the camera with the cart movement (done)
+adding helpers?? not sure (done)
