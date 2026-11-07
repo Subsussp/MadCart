@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { OrbitControls, PointerLockControls } from 'three/examples/jsm/Addons.js';
+import { OrbitControls, PointerLockControls, ThreeMFLoader } from 'three/examples/jsm/Addons.js';
 let width = window.innerWidth
 let height = window.innerHeight
 // everything that has to do with Three js and the visual state/drawing
@@ -17,6 +17,24 @@ let axes = new THREE.AxesHelper()
 let ambient = new THREE.AmbientLight("white")
 const pcontrols = new OrbitControls( povcamera, renderer.domElement );
 const controls = new PointerLockControls( camera, renderer.domElement );
+let roup = new THREE.Group()
+
+let x = .252;
+let z= 0.19;
+let rayLen = .5
+let points = [new THREE.Vector3(x,0.1,z),new THREE.Vector3(x ,-rayLen,z)]
+let points2 = [new THREE.Vector3(-x - 0.016,0.1,z),new THREE.Vector3(-x - 0.016,-rayLen,z)]
+
+let ray = new THREE.Raycaster(points[0],points[1],0,1.0)
+let ray2 = new THREE.Raycaster(points2[0],points2[1],0,1.0)
+// ray.setFromCamera(camera)
+let buffer  =new THREE.BufferGeometry()
+let buffer2  =new THREE.BufferGeometry()
+buffer.setFromPoints(points)
+buffer2.setFromPoints(points2)
+let rayhelper = new THREE.Line(buffer,new THREE.LineBasicMaterial({color:"white"}))
+let rayhelper2 = new THREE.Line(buffer2,new THREE.LineBasicMaterial({color:"white"}))
+// roup.add(ray)
 
 camera.position.set(0,0.6,.11)
 camera.lookAt(0,0.5,-.9)
@@ -39,12 +57,21 @@ let data = await loader.loadAsync("/assets/Crazy_Cart.glb")
 let crazyCart = data.scene
 let cccGroup = new THREE.Group()
 
+let box = new THREE.Box3().setFromObject(crazyCart)
+let boxhelper = new THREE.Box3Helper(box,new THREE.Color('yellow')) 
+let things = new THREE.Vector3()
+ box.getSize(things)
+console.log(things)
 let ccScene = crazyCart
+cccGroup.add(boxhelper);
 cccGroup.add(ccScene);
 cccGroup.add(camera)
 cccGroup.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
+cccGroup.add(rayhelper)
+cccGroup.add(rayhelper2)
+
 scene.add(cccGroup)
-scene.add(chelper)
+// scene.add(chelper)
 scene.add(povcamera)
 
 // everything is in SI units
@@ -61,9 +88,10 @@ let CFG = {
 let Cart = function(mass,mesh){
     this.mesh = mesh
     this.mass = mass
-    this.vx = 0.0,this.x = 0.0
-    this.vz = 0.0, this.z = 0.0
-    this.prevX = 0.0, this.prevZ = 0.0
+    this.vx = 0.0;this.x = 0.0
+    this.vy = 0.0;this.y = 0.0
+    this.vz = 0.0; this.z = 0.0
+    this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
     this.yaw = 0
     this.motorForce = new THREE.Vector3(0,0,0)
     this.parts =[new wheel(0.3,0.2032), new wheel(0.2,0.076),new wheel(0.2,0.076)]
@@ -84,40 +112,54 @@ Cart.prototype.calcuateNetforce = function() {
 }
 Cart.prototype.updateAcceleration = function() {
 }
-function calcauteResultantVector(x,y){
-    return Math.hypot(x,y)
-}
+
 Cart.prototype.calcuateDrag = function(drag){
     this.speed = calcauteResultantVector(this.vx,this.vz)
     Fx = -drag * this.speed * this.vx
     Fz = -drag * this.speed * this.vz
     return [Fx,Fz]
 }
+function calcauteResultantVector(x,y){
+    return Math.hypot(x,y)
+}
 
-
-let ccBody = new Cart(1500,ccScene)
-
+let ccBody = new Cart(200,ccScene)
+ccBody.prevY = 10
+ccBody.y = 10
+cccGroup.position.y = 10
 // THROTTLE USING TRACKPAD PRESSURE 
 // let pressure = 0
 // window.addEventListener('webkitmouseforcechanged', (event) => {
 //     pressure = event.webkitForce
 // });
 
+function checkCollision(){
+    
+}
+
 function step(dt){
     let inputs = readInput()
-    ccBody.vz = inputs.throttle && 1 / 120
+    checkCollision()
+    if(ccBody.y > 0){
+        ccBody.vy += (CFG.gravity) * dt
+    }else{
+        ccBody.vy = 0
+    }
+    // ccBody.vz = inputs.throttle && 1 / 120
     ccBody.prevX = ccBody.x
+    ccBody.prevY = ccBody.y
     ccBody.prevZ = ccBody.z
 
-    ccBody.x += +ccBody.vx * dt
-    ccBody.z += +ccBody.vz * dt
+    ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt
 
     
 }
 
 function draw(alpha){
-    cccGroup.position.x += (ccBody.x - ccBody.prevX) * alpha;
-    cccGroup.position.z += (ccBody.z - ccBody.prevZ) * alpha;
+    
+    cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
+    cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
+    cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * alpha;
 
 }
 
@@ -128,7 +170,7 @@ function animate(time) {
     let deltaTime =  time - previousT
     accumulator += deltaTime
     while (accumulator>= CFG.dt){
-        step(CFG.dt)
+        step(CFG.dt / 1000)
         accumulator -= CFG.dt
     }
     previousT = time 
