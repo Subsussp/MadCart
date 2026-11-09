@@ -14,7 +14,7 @@ let camera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
 let povcamera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
 let grid = new THREE.GridHelper(200,100)
 let axes = new THREE.AxesHelper()
-let ambient = new THREE.AmbientLight("white")
+let sun = new THREE.DirectionalLight("white")
 const pcontrols = new OrbitControls( povcamera, renderer.domElement );
 const controls = new PointerLockControls( camera, renderer.domElement );
 let roup = new THREE.Group()
@@ -41,7 +41,7 @@ camera.lookAt(0,0.5,-.9)
 povcamera.position.set(0,1,-0.1)
 scene.add(grid)
 scene.add(axes)
-scene.add(ambient)
+scene.add(sun)
 
 let dracoLoader = new DRACOLoader()
 let loader = new GLTFLoader()
@@ -80,35 +80,46 @@ let CFG = {
     dt: 1 / 120 * 1000, // this is in ms
     gravity: -9.81,
     mass: 150,
-    maxThrottle:3000, // in Newton
+    maxTorqu:3800, // in Newton
 
     airDrag:2,
+    staticFriction: 0.6,
+    KineticFriction:0.4
 }
 
 let Cart = function(mass,mesh){
     this.mesh = mesh
     this.mass = mass
+
+
     this.vx = 0.0;this.x = 0.0
     this.vy = 0.0;this.y = 0.0
     this.vz = 0.0; this.z = 0.0
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
-    this.yaw = 0
+    this.yaw = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.3,0.2032), new wheel(0.2,0.076),new wheel(0.2,0.076)]
+    this.parts =[new wheel(0.3,0.2032,this.mass,this), new wheel(0.2,0.076,this.mass,this),new wheel(0.2,0.076,this.mass,this)]
 }
-let wheel = function(mass,radius,mesh){
+
+let wheel = function(mass,radius,cartMass,cart){
     this.mass = mass
     this.radius = radius
+    this.cartMass = cartMass
 
+    this.isSlipping = false;
+    this.maxStaticFrictionForce = ((this.cartMass + this.mass) / 3 * -CFG.gravity) * CFG.staticFriction
     this.slipAngle = 0
     this.angularV = 0
     this.angularInertia = 1/2 * this.mass * radius * radius
 }
 
-Cart.prototype.calcuateNetforce = function() {
-    // this.netForce = this.forces.reduce((value,nextValue)=>{
-    //     return new THREE.Vector3(value.x +nextValue.x,value.y + nextValue.y,value.z+nextValue.z)
-    // })
+wheel.prototype.updateSlipping = function () {
+    if(driveForce > this.maxStaticFrictionForce){
+        this.isSlipping = true
+        // change to kintic friction
+    }else{
+        this.isSlipping = false
+    }
 }
 Cart.prototype.updateAcceleration = function() {
 }
@@ -123,7 +134,7 @@ function calcauteResultantVector(x,y){
     return Math.hypot(x,y)
 }
 
-let ccBody = new Cart(200,ccScene)
+let ccBody = new Cart(159.7,ccScene)
 ccBody.prevY = 10
 ccBody.y = 10
 cccGroup.position.y = 10
