@@ -99,10 +99,10 @@ let Cart = function(mass,mesh){
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
     this.yaw = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.5,0.1,this.mass,this), new wheel(0.2,0.076,this.mass,this),new wheel(0.2,0.076,this.mass,this)]
+    this.parts =[new wheel(0.5,0.0964715,this.mass,30000,this), new wheel(0.2,0.037988,this.mass,0,this),new wheel(0.2,0.037988,this.mass,0,this)]
 }
 
-let wheel = function(mass,radius,cartMass,cart){
+let wheel = function(mass,radius,cartMass,maxDriveForce,cart){
     this.mass = mass
     this.radius = radius
     this.cartMass = cartMass
@@ -111,25 +111,30 @@ let wheel = function(mass,radius,cartMass,cart){
     this.maxStaticFrictionForce = ((this.cartMass + this.mass) / 3 * -CFG.gravity) * CFG.staticFriction
     this.slipAngle = 0
     this.angularV = 0
-    this.torque = 3000
+    this.maxDriveForce = maxDriveForce 
     this.momentOfinertia = 1/2 * this.mass * radius * radius
 }
 
 wheel.prototype.updateSlipping = function () {
-    if(driveForce > this.maxStaticFrictionForce){
+    if(this.maxDriveForce * throttle > this.maxStaticFrictionForce){
         this.isSlipping = true
         // change to kintic friction
     }else{
         this.isSlipping = false
     }
+    // console.log(this.isSlipping)
 }
 Cart.prototype.updateAcceleration = function() {
 }
 
+Cart.prototype.calculateMotorTorque = function(omega) {
+
+}
+
 Cart.prototype.calcuateDrag = function(drag){
     this.speed = calcauteResultantVector(this.vx,this.vz)
-    Fx = -drag * this.speed * this.vx
-    Fz = -drag * this.speed * this.vz
+    let Fx = -drag * this.speed * this.vx
+    let Fz = -drag * this.speed * this.vz
     return [Fx,Fz]
 }
 function calcauteResultantVector(x,y){
@@ -140,6 +145,7 @@ let ccBody = new Cart(159.7,ccScene)
 ccBody.prevY = 10
 ccBody.y = 10
 cccGroup.position.y = 10
+let modelWheels = [ccScene.children[2].children[1]]
 // THROTTLE USING TRACKPAD PRESSURE 
 // let pressure = 0
 // window.addEventListener('webkitmouseforcechanged', (event) => {
@@ -158,9 +164,15 @@ function step(dt){
     }else{
         ccBody.vy = 0
     }
+    let netForce = 0
     ccBody.parts.forEach((wheel)=>{
-        wheel.angularV -= (wheel.torque * inputs.throttle / wheel.momentOfinertia) * dt
+        netForce+= Math.min( wheel.maxDriveForce * inputs.throttle , wheel.maxStaticFrictionForce)
+        wheel.angularV = -ccBody.vz / wheel.radius * dt
+        wheel.updateSlipping()
     })
+    let [Fx,Fy] =ccBody.calcuateDrag(CFG.airDrag)
+    netForce = netForce + Math.min(netForce,Fx)
+    ccBody.vz += netForce / ccBody.mass * dt
     // ccBody.vz = inputs.throttle && 1 / 120
     ccBody.prevX = ccBody.x
     ccBody.prevY = ccBody.y
@@ -172,7 +184,8 @@ function step(dt){
 }
 
 function draw(alpha){
-    ccScene.children[2].children[0].rotation.x += ccBody.parts[0].angularV // Front wheel 
+    // console.log(ccBody.parts[0].angularV )
+    // Front wheel 
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * alpha;
@@ -214,11 +227,13 @@ window.addEventListener('mouseup',()=>{
 let keys = {}
 window.addEventListener('keydown',(e)=>{
     keys[e.code] = true
-
+    if(e.code == "KeyW"){
+       throttle+= + 0.03
+    }
 })
 window.addEventListener('keyup',(e)=>keys[e.code] = false)
 
-
+let throttle = 0
 function readInput(){
-    return {throttle: keys.KeyW ? 1 : 0,steer: {},driftBar: !!keys.Space}
+    return {throttle: keys.KeyW ? throttle : 0,steer: {},driftBar: !!keys.Space}
 }
