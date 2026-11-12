@@ -53,7 +53,8 @@ dracoLoader.setDecoderPath(
 loader.setDRACOLoader(dracoLoader);
 let chelper = new THREE.CameraHelper(camera)
 
-let data = await loader.loadAsync("/assets/Crazy_Cart.glb")
+// let data = await loader.loadAsync("/assets/Crazy_Cart.glb")
+let data = await loader.loadAsync("/assets/redCartv4.glb")
 let crazyCart = data.scene
 let cccGroup = new THREE.Group()
 
@@ -98,7 +99,7 @@ let Cart = function(mass,mesh){
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
     this.yaw = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.3,0.2032,this.mass,this), new wheel(0.2,0.076,this.mass,this),new wheel(0.2,0.076,this.mass,this)]
+    this.parts =[new wheel(0.5,0.1,this.mass,this), new wheel(0.2,0.076,this.mass,this),new wheel(0.2,0.076,this.mass,this)]
 }
 
 let wheel = function(mass,radius,cartMass,cart){
@@ -110,7 +111,8 @@ let wheel = function(mass,radius,cartMass,cart){
     this.maxStaticFrictionForce = ((this.cartMass + this.mass) / 3 * -CFG.gravity) * CFG.staticFriction
     this.slipAngle = 0
     this.angularV = 0
-    this.angularInertia = 1/2 * this.mass * radius * radius
+    this.torque = 3000
+    this.momentOfinertia = 1/2 * this.mass * radius * radius
 }
 
 wheel.prototype.updateSlipping = function () {
@@ -156,6 +158,9 @@ function step(dt){
     }else{
         ccBody.vy = 0
     }
+    ccBody.parts.forEach((wheel)=>{
+        wheel.angularV -= (wheel.torque * inputs.throttle / wheel.momentOfinertia) * dt
+    })
     // ccBody.vz = inputs.throttle && 1 / 120
     ccBody.prevX = ccBody.x
     ccBody.prevY = ccBody.y
@@ -167,7 +172,7 @@ function step(dt){
 }
 
 function draw(alpha){
-    
+    ccScene.children[2].children[0].rotation.x += ccBody.parts[0].angularV // Front wheel 
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * alpha;
