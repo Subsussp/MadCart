@@ -81,7 +81,7 @@ let CFG = {
     dt: 1 / 120 * 1000, // this is in ms
     gravity: -9.81,
     mass: 150,
-    maxTorqu:3800, // in Newton
+    // maxTorqu:3800, // in Newton
 
     airDrag:2,
     staticFriction: 0.6,
@@ -99,10 +99,10 @@ let Cart = function(mass,mesh){
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
     this.yaw = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.5,0.0964715,this.mass,30000,this), new wheel(0.2,0.037988,this.mass,0,this),new wheel(0.2,0.037988,this.mass,0,this)]
+    this.parts =[new wheel(0.5,0.0964715,this.mass,4.35,this), new wheel(0.2,0.037988,this.mass,0,this),new wheel(0.2,0.037988,this.mass,0,this)]
 }
 
-let wheel = function(mass,radius,cartMass,maxDriveForce,cart){
+let wheel = function(mass,radius,cartMass,maxTorque,cart){
     this.mass = mass
     this.radius = radius
     this.cartMass = cartMass
@@ -111,18 +111,17 @@ let wheel = function(mass,radius,cartMass,maxDriveForce,cart){
     this.maxStaticFrictionForce = ((this.cartMass + this.mass) / 3 * -CFG.gravity) * CFG.staticFriction
     this.slipAngle = 0
     this.angularV = 0
-    this.maxDriveForce = maxDriveForce 
+    this.maxTorque = maxTorque 
     this.momentOfinertia = 1/2 * this.mass * radius * radius
 }
-
 wheel.prototype.updateSlipping = function () {
-    if(this.maxDriveForce * throttle > this.maxStaticFrictionForce){
+    if(this.maxTorque / this.radius * throttle > this.maxStaticFrictionForce){
         this.isSlipping = true
         // change to kintic friction
     }else{
         this.isSlipping = false
     }
-    // console.log(this.isSlipping)
+    console.log(this.isSlipping)
 }
 Cart.prototype.updateAcceleration = function() {
 }
@@ -165,14 +164,31 @@ function step(dt){
         ccBody.vy = 0
     }
     let netForce = 0
+    let restitanceLeftover = 0
+    let wheelFrictionForce = 0
     ccBody.parts.forEach((wheel)=>{
-        netForce+= Math.min( wheel.maxDriveForce * inputs.throttle , wheel.maxStaticFrictionForce)
-        wheel.angularV = -ccBody.vz / wheel.radius * dt
         wheel.updateSlipping()
+        if(wheel.isSlipping){
+            wheelFrictionForce+= ((wheel.cartMass + wheel.mass) / 3 * -CFG.gravity) * CFG.KineticFriction
+        }else{
+            wheelFrictionForce+= Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
+        }
     })
-    let [Fx,Fy] =ccBody.calcuateDrag(CFG.airDrag)
-    netForce = netForce + Math.min(netForce,Fx)
-    ccBody.vz += netForce / ccBody.mass * dt
+    let [Fx,Fy] = ccBody.calcuateDrag(CFG.airDrag)
+    netForce = wheelFrictionForce + Fx 
+    let a = netForce / (ccBody.mass + restitanceLeftover ) * dt
+    ccBody.parts.forEach((wheel)=>{
+        if(wheel.isSlipping){
+            wheelFrictionForce+= ((wheel.cartMass + wheel.mass) / 3 * -CFG.gravity) * CFG.KineticFriction
+            wheel.angularV += - ((wheel.maxTorque * inputs.throttle - wheel.maxStaticFrictionForce * wheel.radius) / wheel.momentOfinertia) * dt
+        }else{
+            if(wheel.maxTorque === 0){
+                restitanceLeftover += (wheel.momentOfinertia ) / (wheel.radius ** 2)
+            }
+            wheel.angularV = -ccBody.vz / wheel.radius * dt - (a / wheel.radius)
+        }
+    })
+    ccBody.vz += a
     // ccBody.vz = inputs.throttle && 1 / 120
     ccBody.prevX = ccBody.x
     ccBody.prevY = ccBody.y
@@ -184,8 +200,10 @@ function step(dt){
 }
 
 function draw(alpha){
-    // console.log(ccBody.parts[0].angularV )
     // Front wheel 
+    modelWheels[0].rotation.x += ccBody.parts[0].angularV 
+    // ccScene.children[2].rotation.y = 
+
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * alpha;
@@ -228,7 +246,8 @@ let keys = {}
 window.addEventListener('keydown',(e)=>{
     keys[e.code] = true
     if(e.code == "KeyW"){
-       throttle+= + 0.03
+       throttle >= 1 ? (throttle = 1) : (throttle+= + 0.003)
+       console.log(throttle)
     }
 })
 window.addEventListener('keyup',(e)=>keys[e.code] = false)
