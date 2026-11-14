@@ -73,8 +73,7 @@ let cccGroup = new THREE.Group()
 let box = new THREE.Box3().setFromObject(crazyCart)
 let boxhelper = new THREE.Box3Helper(box,new THREE.Color('yellow')) 
 let things = new THREE.Vector3()
- box.getSize(things)
-console.log(things)
+box.getSize(things)
 let ccScene = crazyCart
 cccGroup.add(boxhelper);
 cccGroup.add(ccScene);
@@ -134,6 +133,7 @@ let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption){
     this.maxStaticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.staticFriction
     this.maxKineticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.KineticFriction
     this.slipAngle = 0
+    this.slipRatio = 0
     this.angularV = 0
     this.maxTorque = maxTorque 
     this.momentOfinertia = 1/2 * this.mass * radius * radius
@@ -175,10 +175,10 @@ let modelWheels = [ccScene.children[0].children[0].children[1]]
 createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.multiplyScalar(5),"blue")
 createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"red")
 
-createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.multiplyScalar(5),"yellow",ccScene.children[0].children[0])
+let fwd = createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.multiplyScalar(5),"yellow",ccScene.children[0].children[0])
 createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"green",ccScene.children[0].children[0])
 
-let forceResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"cyan")
+let forceResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"cyan",ccScene.children[0].children[0])
 const slippingState = {
     get Slipping() {
         return ccBody.parts.some(wheel => wheel.isSlipping);
@@ -189,6 +189,7 @@ let throttleValue = statusFolder.add(throttleState, "throttle").step(0.001).list
 let carVelocityValue = statusFolder.add(ccBody, "vz").step(0.001).listen();
 let carAValue = statusFolder.add(ccBody, "az").step(0.001).listen();
 let isSlipping = statusFolder.add(slippingState, "Slipping").listen();
+
 isSlipping.domElement.style.pointerEvents = "none"
 throttleValue.domElement.style.pointerEvents = "none"
 
@@ -241,20 +242,25 @@ function step(dt){
     FxnetForce = FxwheelFrictionForce + Fx 
     let az = FznetForce / (ccBody.mass + restitanceLeftover ) * dt
     let ax = FxnetForce / (ccBody.mass + restitanceLeftover ) * dt
-    console.log(ccScene.children[0].children[0].position)
-    // forceResultant.geometry.setPositions([
-    //     ccScene.children[0].children[0].position.x, 0,  ccScene.children[0].children[0].position.z
-    //     -FxnetForce, 0, -FznetForce 
-    // ]);
-    console.log(FxnetForce)
-    console.log(FznetForce)
+
+    if(FxnetForce || FznetForce){
+        let points = [
+            new THREE.Vector3(0,0,0)
+            ,
+            new THREE.Vector3(-FxnetForce,0, -FznetForce )
+        ]
+        forceResultant.geometry.setFromPoints(points);
+    }
     ccBody.az = FznetForce / (ccBody.mass + restitanceLeftover) 
     // Calculating angular Velocity for the wheels
     ccBody.parts.forEach((wheel)=>{
         if(wheel.isSlipping){
-            wheel.angularV += - ((wheel.maxTorque * inputs.throttle - wheel.maxStaticFrictionForce * wheel.radius) / wheel.momentOfinertia) * dt
+            let omega = ((wheel.maxTorque * inputs.throttle - wheel.maxKineticFrictionForce * wheel.radius) / wheel.momentOfinertia)
+            
+            wheel.slipRatio = omega * wheel.radius * dt / ccBody.vz  - 1
+            wheel.angularV += -omega * dt
         }else{
-            wheel.angularV = -ccBody.vz / wheel.radius * dt - (calcauteResultantVector(ax,az) / wheel.radius)
+            wheel.angularV = -ccBody.vz / wheel.radius * dt 
         }
     })
     ccBody.vz += az
