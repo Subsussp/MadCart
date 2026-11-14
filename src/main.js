@@ -7,17 +7,51 @@ import * as dat from 'dat.gui'
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import * as JXG from 'jsxgraph'
 
 let width = window.innerWidth
 let height = window.innerHeight
 let throttle = 0
 let steeringAngle = 0
+let B = 10;
+let C = 1.9;
+let D = 0;
+let E = 0.97;
 // everything that has to do with Three js and the visual state/drawing
 let gui = new dat.GUI({name:'Testing'})
 let statusFolder = gui.addFolder('data')
 let paramFolder = gui.addFolder('param')
 statusFolder.open()
 
+let board = JXG.JSXGraph.initBoard('jxgbox',{
+    boundingBox: [-0.3,1000,0.3,-1000],
+    axis:true,
+    showNavigation:true,
+    showCopyright:false
+})
+let xAxis = board.defaultAxes.x;
+let yAxis = board.defaultAxes.y;
+yAxis.defaultTicks.setAttribute({
+    label: {
+        strokeColor: 'white'
+    }
+});
+xAxis.defaultTicks.setAttribute({
+    label: {
+        strokeColor: 'white'
+    }
+});
+let point = board.create('point', [0, pacejka(0)], {
+    name: 'P',
+    size: 5,
+    color: 'red'
+});
+let curve = board.create('functiongraph',[function(x){
+    return pacejka(x)
+},-0.3,0.3],{
+    strokeColor: '#2196F3',
+    strokeWidth:3
+})
 let renderer = new THREE.WebGLRenderer({antialias:true})
 renderer.setSize(window.innerWidth,window.innerHeight)
 let scene = new THREE.Scene()
@@ -94,14 +128,14 @@ let CFG = {
     mass: 150,
     // maxTorqu:3800, // in Newton
 
-    loadFront: 1/3,
-    // loadFront: 0.470,
-    // loadCaster: 0.265,
-    loadCaster: 1/3,
+    // loadFront: 1/3,
+    loadFront: 0.470,
+    loadCaster: 0.265,
+    // loadCaster: 1/3,
 
     airDrag:2,
-    staticFriction: 0.6,
-    KineticFriction:0.4
+    staticFriction: 0.9,
+    KineticFriction:0.7
 }
 
 let Cart = function(mass,mesh){
@@ -144,11 +178,8 @@ wheel.prototype.updateSlipping = function (throttle) {
 
     if(this.maxTorque / this.radius * throttle > this.maxStaticFrictionForce){
         this.isSliding = true
-        console.log(this.isSliding)
-        console.log(this.maxTorque / this.radius * throttle)
-        console.log(this.maxKineticFrictionForce)
         // change to kintic friction
-    }else if(this.isSliding && (this.maxTorque / this.radius * throttle) <= this.maxKineticFrictionForce){
+    }else if(this.isSliding && (this.maxTorque / this.radius * throttle) <= this.maxStaticFrictionForce){
         this.isSliding = false
     }
 }
@@ -163,8 +194,12 @@ Cart.prototype.calcuateDrag = function(drag){
     let Fz = -drag * this.speed * this.vz
     return [Fx,Fz]
 }
+// Math Functions
 function calcauteResultantVector(x,y){
     return Math.hypot(x,y)
+}
+function pacejka(x){
+    return D * Math.sin(C * Math.atan(B*x-E * (B*x-Math.atan(B*x))))
 }
 function createHelperForVectors(start,end,color,parent = cccGroup){
     let geometry  = new LineGeometry()
@@ -185,6 +220,7 @@ let fwd = createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.m
 createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"green",ccScene.children[0].children[0])
 
 let forceResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"cyan",ccScene.children[0].children[0])
+let speedResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"#FF9100",ccScene.children[0].children[0])
 const slippingState = {
     get Slipping() {
         return ccBody.parts.some(wheel => wheel.isSliding);
@@ -231,8 +267,17 @@ function step(dt){
             restitanceLeftover += (wheel.momentOfinertia ) / (wheel.radius ** 2)
         }
         if(wheel.isSliding){
+            let alpha = ((wheel.maxTorque * inputs.throttle - wheel.maxKineticFrictionForce * wheel.radius) / wheel.momentOfinertia)
+            wheel.angularV += -alpha * dt
+            wheel.slipRatio = -wheel.angularV * wheel.radius / (ccBody.vz || 1) - 1
+            D = wheel.maxKineticFrictionForce
+            let traction = pacejka(wheel.slipAngle)
+            console.log(wheel.slipAngle);
+            
+            point.moveTo([wheel.slipRatio,])
+
             let resultantForce =  Math.min(wheel.maxTorque / wheel.radius * inputs.throttle,wheel.maxKineticFrictionForce)
-            FzwheelFrictionForce +=  resultantForce * Math.cos(ccBody.yaw)
+            FzwheelFrictionForce +=  traction
             FxwheelFrictionForce +=  resultantForce * Math.sin(ccBody.yaw)
         }else{
             let resultantForce =  Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
@@ -249,23 +294,34 @@ function step(dt){
     let ax = FxnetForce / (ccBody.mass + restitanceLeftover ) 
 
     if(FxnetForce || FznetForce){
+        let end = new THREE.Vector3(FxnetForce,0, FznetForce)
+        end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
         let points = [
             new THREE.Vector3(0,0,0)
             ,
-            new THREE.Vector3(-FxnetForce,0, -FznetForce )
+            end
         ]
         forceResultant.geometry.setFromPoints(points);
     }
+
     ccBody.az = az
     ccBody.vz += az * dt
     ccBody.vx += ax * dt
+    if(ccBody.vx ||  ccBody.vz){
+        let end = new THREE.Vector3(ccBody.vx,0, ccBody.vz)
+        end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
+        let points = [
+            new THREE.Vector3(0,0,0)
+            ,
+            end
+        ]
+        speedResultant.geometry.setFromPoints(points);
+    }
     // Calculating angular Velocity for the wheels
     ccBody.parts.forEach((wheel)=>{
         if(wheel.isSliding){
-            let alpha = ((wheel.maxTorque * inputs.throttle - wheel.maxKineticFrictionForce * wheel.radius) / wheel.momentOfinertia)
+
             
-            wheel.angularV += -alpha * dt
-            wheel.slipRatio = -wheel.angularV * wheel.radius / (ccBody.vz || 1) - 1
         }else{
             wheel.angularV += -az / wheel.radius * dt 
             wheel.slipRatio = -wheel.angularV * wheel.radius/ (ccBody.vz || 1)  - 1
@@ -336,7 +392,11 @@ window.addEventListener('keydown',(e)=>{
         throttle >= 1 ? (throttle = 1) : (throttle+= + 0.003)
     }
 })
-window.addEventListener('keyup',(e)=>keys[e.code] = false)
+window.addEventListener('keyup',(e)=>{keys[e.code] = false
+    if(e.code == "KeyW"){
+        throttle = 0
+    }
+})
 
 function readInput(){
     throttleState.throttle = keys.KeyW ? (keys.KeyS ? (throttle - throttle / 2) : throttle) : 0
