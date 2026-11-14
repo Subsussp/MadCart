@@ -2,10 +2,17 @@ import * as THREE from 'three';
 import './style.css'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { OrbitControls, PointerLockControls, ThreeMFLoader } from 'three/examples/jsm/Addons.js';
+import { OrbitControls, PointerLockControls } from 'three/examples/jsm/Addons.js';
+import * as dat from 'dat.gui'
+
 let width = window.innerWidth
 let height = window.innerHeight
+let throttle = 0
 // everything that has to do with Three js and the visual state/drawing
+let gui = new dat.GUI({name:'Testing'})
+let statusFolder = gui.addFolder('data')
+let paramFolder = gui.addFolder('param')
+statusFolder.open()
 
 let renderer = new THREE.WebGLRenderer({antialias:true})
 renderer.setSize(window.innerWidth,window.innerHeight)
@@ -46,6 +53,7 @@ scene.add(sun)
 let dracoLoader = new DRACOLoader()
 let loader = new GLTFLoader()
 document.getElementById('app').appendChild(renderer.domElement)
+document.querySelector('.dg.ac').appendChild(gui.domElement)
 
 dracoLoader.setDecoderPath(
   'https://www.gstatic.com/draco/versioned/decoders/1.5.7/'
@@ -96,10 +104,11 @@ let Cart = function(mass,mesh){
     this.vx = 0.0;this.x = 0.0
     this.vy = 0.0;this.y = 0.0
     this.vz = 0.0; this.z = 0.0
+    this.az= 0.0
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
     this.yaw = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.5,0.0964715,this.mass,4.35,this), new wheel(0.2,0.037988,this.mass,0,this),new wheel(0.2,0.037988,this.mass,0,this)]
+    this.parts =[new wheel(0.5,0.0964715,this.mass,103,this), new wheel(0.2,0.037988,this.mass,0,this),new wheel(0.2,0.037988,this.mass,0,this)]
 }
 
 let wheel = function(mass,radius,cartMass,maxTorque,cart){
@@ -109,6 +118,7 @@ let wheel = function(mass,radius,cartMass,maxTorque,cart){
 
     this.isSlipping = false;
     this.maxStaticFrictionForce = ((this.cartMass + this.mass) / 3 * -CFG.gravity) * CFG.staticFriction
+    this.maxKineticFrictionForce = ((this.cartMass + this.mass) / 3 * -CFG.gravity) * CFG.KineticFriction
     this.slipAngle = 0
     this.angularV = 0
     this.maxTorque = maxTorque 
@@ -118,11 +128,11 @@ wheel.prototype.updateSlipping = function () {
     if(this.maxTorque / this.radius * throttle > this.maxStaticFrictionForce){
         this.isSlipping = true
         // change to kintic friction
-    }else{
+    }else if(this.isSlipping && (this.maxTorque / this.radius * throttle) <= this.maxKineticFrictionForce){
         this.isSlipping = false
     }
-    console.log(this.isSlipping)
 }
+
 Cart.prototype.updateAcceleration = function() {
 }
 
@@ -145,6 +155,21 @@ ccBody.prevY = 10
 ccBody.y = 10
 cccGroup.position.y = 10
 let modelWheels = [ccScene.children[2].children[1]]
+
+const slippingState = {
+    get Slipping() {
+        return ccBody.parts.some(wheel => wheel.isSlipping);
+    }
+};
+const throttleState = { throttle: 0 };
+let throttleValue = statusFolder.add(throttleState, "throttle").step(0.001).listen();
+let carVelocityValue = statusFolder.add(ccBody, "vz").step(0.001).listen();
+let carAValue = statusFolder.add(ccBody, "az").step(0.001).listen();
+let isSlipping = statusFolder.add(slippingState, "Slipping").listen();
+isSlipping.domElement.style.pointerEvents = "none"
+throttleValue.domElement.style.pointerEvents = "none"
+
+
 // THROTTLE USING TRACKPAD PRESSURE 
 // let pressure = 0
 // window.addEventListener('webkitmouseforcechanged', (event) => {
@@ -168,23 +193,24 @@ function step(dt){
     let wheelFrictionForce = 0
     ccBody.parts.forEach((wheel)=>{
         wheel.updateSlipping()
+        if(wheel.maxTorque === 0){
+            restitanceLeftover += (wheel.momentOfinertia ) / (wheel.radius ** 2)
+        }
         if(wheel.isSlipping){
-            wheelFrictionForce+= ((wheel.cartMass + wheel.mass) / 3 * -CFG.gravity) * CFG.KineticFriction
+            wheelFrictionForce+=  Math.min(wheel.maxTorque / wheel.radius * inputs.throttle,wheel.maxKineticFrictionForce)
         }else{
             wheelFrictionForce+= Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
         }
     })
-    let [Fx,Fy] = ccBody.calcuateDrag(CFG.airDrag)
-    netForce = wheelFrictionForce + Fx 
+    let [Fx,Fz] = ccBody.calcuateDrag(CFG.airDrag)
+    netForce = wheelFrictionForce + Fz 
     let a = netForce / (ccBody.mass + restitanceLeftover ) * dt
+        
+    ccBody.az = netForce / (ccBody.mass + restitanceLeftover) 
     ccBody.parts.forEach((wheel)=>{
         if(wheel.isSlipping){
-            wheelFrictionForce+= ((wheel.cartMass + wheel.mass) / 3 * -CFG.gravity) * CFG.KineticFriction
             wheel.angularV += - ((wheel.maxTorque * inputs.throttle - wheel.maxStaticFrictionForce * wheel.radius) / wheel.momentOfinertia) * dt
         }else{
-            if(wheel.maxTorque === 0){
-                restitanceLeftover += (wheel.momentOfinertia ) / (wheel.radius ** 2)
-            }
             wheel.angularV = -ccBody.vz / wheel.radius * dt - (a / wheel.radius)
         }
     })
@@ -202,7 +228,7 @@ function step(dt){
 function draw(alpha){
     // Front wheel 
     modelWheels[0].rotation.x += ccBody.parts[0].angularV 
-    // ccScene.children[2].rotation.y = 
+    // ccScene.children[2].rotation.y =  
 
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
@@ -246,13 +272,12 @@ let keys = {}
 window.addEventListener('keydown',(e)=>{
     keys[e.code] = true
     if(e.code == "KeyW"){
-       throttle >= 1 ? (throttle = 1) : (throttle+= + 0.003)
-       console.log(throttle)
+        throttle >= 1 ? (throttle = 1) : (throttle+= + 0.003)
     }
 })
 window.addEventListener('keyup',(e)=>keys[e.code] = false)
 
-let throttle = 0
 function readInput(){
-    return {throttle: keys.KeyW ? throttle : 0,steer: {},driftBar: !!keys.Space}
+    throttleState.throttle = keys.KeyW ? (keys.KeyS ? (throttle - throttle / 2) : throttle) : 0
+    return {throttle: keys.KeyW ? (keys.KeyS ? (throttle - throttle / 2) : throttle) : 0,steer: {},driftBar: !!keys.Space}
 }
