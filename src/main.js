@@ -13,22 +13,33 @@ let width = window.innerWidth
 let height = window.innerHeight
 let throttle = 0
 let steeringAngle = 0
-let B = 10;
-let C = 1.9;
-let D = 1000;
-let E = 0.97;
+
 // everything that has to do with Three js and the visual state/drawing
 let gui = new dat.GUI({name:'Testing'})
 let statusFolder = gui.addFolder('data')
 let paramFolder = gui.addFolder('param')
 statusFolder.open()
 
-let board = JXG.JSXGraph.initBoard('jxgbox',{
-    boundingBox: [-0.3,1000,0.3,-1000],
-    axis:true,
-    showNavigation:true,
-    showCopyright:false
-})
+const board = JXG.JSXGraph.initBoard('jxgbox', {
+    boundingbox: [-13, 700, 13, -700],
+    axis: true,
+    showCopyright: false
+});
+
+
+
+function pacejka(x) {
+    let b = 0.1;
+    let c =1.7;
+    let e = -10;
+    let d = 664.770726;
+    
+    return d * Math.sin(
+        c * Math.atan(
+            b * x - e * (b * x - Math.atan(b * x))
+        )
+    );
+}
 let xAxis = board.defaultAxes.x;
 let yAxis = board.defaultAxes.y;
 yAxis.defaultTicks.setAttribute({
@@ -41,17 +52,14 @@ xAxis.defaultTicks.setAttribute({
         strokeColor: 'white'
     }
 });
-let point = board.create('point', [0, pacejka(0)], {
+let point = board.create('point', [0,
+    pacejka(0)], {
     name: 'P',
     size: 5,
     color: 'red'
 });
-let curve = board.create('functiongraph',[function(x){
-    return pacejka(x)
-},-0.3,0.3],{
-    strokeColor: '#2196F3',
-    strokeWidth:3
-})
+let curve = board.create('functiongraph', [pacejka, -13, 13]);
+
 let renderer = new THREE.WebGLRenderer({antialias:true})
 renderer.setSize(window.innerWidth,window.innerHeight)
 let scene = new THREE.Scene()
@@ -198,9 +206,9 @@ Cart.prototype.calcuateDrag = function(drag){
 function calcauteResultantVector(x,y){
     return Math.hypot(x,y)
 }
-function pacejka(x){
-    return D * Math.sin(C * Math.atan(B*x-E * (B*x-Math.atan(B*x))))
-}
+// function pacejka(x){
+//     return D * Math.sin(C * Math.atan(B*x-E * (B*x-Math.atan(B*x))))
+// }
 function createHelperForVectors(start,end,color,parent = cccGroup){
     let geometry  = new LineGeometry()
     geometry.setFromPoints([start,end])
@@ -271,33 +279,30 @@ function step(dt){
             let alpha = ((wheel.maxTorque * inputs.throttle - wheel.maxKineticFrictionForce * wheel.radius) / wheel.momentOfinertia)
             wheel.angularV += -alpha * dt
             wheel.slipRatio = -wheel.angularV * wheel.radius / (ccBody.vz || 1) - 1
-            D = wheel.maxKineticFrictionForce
-            let traction = pacejka(wheel.slipAngle)
-            console.log(wheel.slipAngle);
-            
-            point.moveTo([wheel.slipRatio,])
+            // D = wheel.maxKineticFrictionForce
+            let traction = pacejka(wheel.slipAngle)            
+            // point.moveTo([wheel.slipRatio])
 
             let resultantForce =  Math.min(wheel.maxTorque / wheel.radius * inputs.throttle,wheel.maxKineticFrictionForce)
             FzwheelFrictionForce +=  traction
             FxwheelFrictionForce +=  resultantForce * Math.sin(ccBody.yaw)
         }else{
             let resultantForce =  Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
-            let fwPos = fwd.geometry.attributes.position
-            let fwVector = new THREE.Vector3(fwPos.getX(1),0,fwPos.getZ(1))
-            let rotatedVector = fwVector.clone().applyAxisAngle(
-                new THREE.Vector3(0, 1, 0),
-                ccBody.yaw 
-            );
-            let angle = Math.acos((-ccBody.vx * rotatedVector.z + ccBody.vz * rotatedVector.x) / ((calcauteResultantVector(rotatedVector.x,rotatedVector.z))*(calcauteResultantVector(ccBody.vx,ccBody.vz))))
-            wheel.slipAngle = Number.isNaN(angle) ? 0 : angle;
-    
-            
-            let lateralForce = pacejka(wheel.slipAngle)
-            console.log(wheel.slipAngle);
-            console.log(lateralForce);
-            
-            FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw)
-            FxwheelFrictionForce += resultantForce * Math.sin(ccBody.yaw) 
+            if(i ==0 ){
+                let fwPos = fwd.geometry.attributes.position
+                let fwVector = new THREE.Vector3(fwPos.getX(1),0,fwPos.getZ(1))
+                let rotatedVector = fwVector.clone().applyAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    ccBody.yaw * 2
+                );
+                let angle = Math.acos((-ccBody.vx * rotatedVector.z + ccBody.vz * rotatedVector.x) / ((calcauteResultantVector(rotatedVector.x,rotatedVector.z))*(calcauteResultantVector(ccBody.vx,ccBody.vz))))
+                wheel.slipAngle = Number.isNaN(angle) ? 0 : angle;
+                
+                let lateralForce = pacejka(wheel.slipAngle /Math.PI * 180,wheel.maxStaticFrictionForce)
+                point.moveTo([wheel.slipAngle /Math.PI * 180,lateralForce])   
+                FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw * 2)
+                FxwheelFrictionForce += -lateralForce * Math.cos(ccBody.yaw * 2)
+            }
         }
     })
 
@@ -362,6 +367,7 @@ function draw(alpha){
     // Front wheel 
     modelWheels[0].rotation.x = ccBody.parts[0].prevAngle + ( ccBody.parts[0].angle - ccBody.parts[0].prevAngle) * alpha
     ccScene.children[0].children[0].rotation.y = ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha
+    cccGroup.rotation.y = -(ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * alpha;
