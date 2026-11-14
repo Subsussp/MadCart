@@ -114,9 +114,9 @@ let Cart = function(mass,mesh){
     this.vz = 0.0; this.z = 0.0
     this.az= 0.0
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
-    this.prevYaw = 0;this.yaw = 0;
+    this.prevYaw = 0;this.yaw = 0
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.5,0.0964715,this.mass,103,CFG.loadFront), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster)]
+    this.parts =[new wheel(0.5,0.09647,this.mass,103,CFG.loadFront), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster)]
     
     // for drawing and better visuals
     this.HeadingVector = new THREE.Vector3(0,0,-1);
@@ -129,9 +129,11 @@ let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption){
     this.radius = radius
     this.cartMass = cartMass
 
+    this.angle = 0;this.prevAngle = 0;
     this.isSlipping = false;
-    this.maxStaticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.staticFriction
-    this.maxKineticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.KineticFriction
+    this.maxStaticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.staticFriction;
+    this.maxKineticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.KineticFriction;
+    this.prevAngularV = 0;
     this.slipAngle = 0
     this.slipRatio = 0
     this.angularV = 0
@@ -189,7 +191,6 @@ let throttleValue = statusFolder.add(throttleState, "throttle").step(0.001).list
 let carVelocityValue = statusFolder.add(ccBody, "vz").step(0.001).listen();
 let carAValue = statusFolder.add(ccBody, "az").step(0.001).listen();
 let isSlipping = statusFolder.add(slippingState, "Slipping").listen();
-
 isSlipping.domElement.style.pointerEvents = "none"
 throttleValue.domElement.style.pointerEvents = "none"
 
@@ -240,8 +241,8 @@ function step(dt){
     let [Fx,Fz] = ccBody.calcuateDrag(CFG.airDrag)
     FznetForce = FzwheelFrictionForce + Fz 
     FxnetForce = FxwheelFrictionForce + Fx 
-    let az = FznetForce / (ccBody.mass + restitanceLeftover ) * dt
-    let ax = FxnetForce / (ccBody.mass + restitanceLeftover ) * dt
+    let az = FznetForce / (ccBody.mass + restitanceLeftover ) 
+    let ax = FxnetForce / (ccBody.mass + restitanceLeftover ) 
 
     if(FxnetForce || FznetForce){
         let points = [
@@ -251,7 +252,9 @@ function step(dt){
         ]
         forceResultant.geometry.setFromPoints(points);
     }
-    ccBody.az = FznetForce / (ccBody.mass + restitanceLeftover) 
+    ccBody.az = az
+    ccBody.vz += az * dt
+    ccBody.vx += ax * dt
     // Calculating angular Velocity for the wheels
     ccBody.parts.forEach((wheel)=>{
         if(wheel.isSlipping){
@@ -260,26 +263,29 @@ function step(dt){
             wheel.slipRatio = omega * wheel.radius * dt / ccBody.vz  - 1
             wheel.angularV += -omega * dt
         }else{
-            wheel.angularV = -ccBody.vz / wheel.radius * dt 
+            wheel.angularV += -az / wheel.radius *dt
         }
+        wheel.prevAngle = wheel.angle
+        wheel.angle += wheel.angularV * dt
     })
-    ccBody.vz += az
-    ccBody.vx += ax
+    console.log(Math.abs(ccBody.parts[0].angularV * (ccBody.parts[0].radius)) - Math.abs(ccBody.vz))
+
     // ccBody.vz = inputs.throttle && 1 / 120
     ccBody.prevX = ccBody.x
     ccBody.prevY = ccBody.y
     ccBody.prevZ = ccBody.z
     ccBody.prevYaw = ccBody.yaw
+    ccBody.prevAngularV = ccBody.angularV
     
     ccBody.yaw += inputs.steer * 1/2 * Math.PI * dt;
-    ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt
+    ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
     
 }
 
 function draw(alpha){
     // Front wheel 
-    modelWheels[0].rotation.x += ccBody.parts[0].angularV * alpha
+    modelWheels[0].rotation.x = ccBody.parts[0].prevAngle + ( ccBody.parts[0].angle - ccBody.parts[0].prevAngle) * alpha
     ccScene.children[0].children[0].rotation.y = ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
