@@ -93,7 +93,7 @@ camera.position.set(0,0.6,.11)
 camera.lookAt(0,0.5,-.9)
 povcamera.position.set(0,1,-0.1)
 scene.add(grid)
-// scene.add(axes)
+scene.add(axes)
 scene.add(sun)
 
 let dracoLoader = new DRACOLoader()
@@ -288,20 +288,29 @@ function step(dt){
             FxwheelFrictionForce +=  resultantForce * Math.sin(ccBody.yaw)
         }else{
             let resultantForce =  Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
+            // There is some issue with the victors here fix it
             if(i ==0 ){
                 let fwPos = fwd.geometry.attributes.position
-                let fwVector = new THREE.Vector3(fwPos.getX(1),0,fwPos.getZ(1))
+                
+                let fwVector = new THREE.Vector3(fwPos.getZ(1),0,fwPos.getX(1))
                 let rotatedVector = fwVector.clone().applyAxisAngle(
                     new THREE.Vector3(0, 1, 0),
-                    ccBody.yaw * 2
+                    -(ccBody.yaw + wheel.angle)
                 );
-                let angle = Math.acos((-ccBody.vx * rotatedVector.z + ccBody.vz * rotatedVector.x) / ((calcauteResultantVector(rotatedVector.x,rotatedVector.z))*(calcauteResultantVector(ccBody.vx,ccBody.vz))))
+                let angle = Math.atan2(
+                    -ccBody.vx * rotatedVector.z - ccBody.vz * rotatedVector.x,
+                    -ccBody.vx * rotatedVector.x + ccBody.vz * rotatedVector.z
+                );
                 wheel.slipAngle = Number.isNaN(angle) ? 0 : angle;
+                // console.log(ccBody.vx);
+                // console.log(ccBody.vz);
+                console.log((wheel.angle)/ Math.PI * 180);
+                console.log((ccBody.yaw)/ Math.PI * 180);
                 
-                let lateralForce = pacejka(wheel.slipAngle /Math.PI * 180,wheel.maxStaticFrictionForce)
+                let lateralForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce)
                 point.moveTo([wheel.slipAngle /Math.PI * 180,lateralForce])   
-                FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw * 2)
-                FxwheelFrictionForce += -lateralForce * Math.cos(ccBody.yaw * 2)
+                FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw) + lateralForce * Math.sin(ccBody.yaw ) * -Math.sign(wheel.slipAngle)
+                FxwheelFrictionForce += lateralForce * Math.cos(ccBody.yaw)* -Math.sign(wheel.slipAngle)
             }
         }
     })
