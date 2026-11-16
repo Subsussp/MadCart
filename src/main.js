@@ -20,11 +20,11 @@ let statusFolder = gui.addFolder('data')
 let paramFolder = gui.addFolder('param')
 statusFolder.open()
 
-const board = JXG.JSXGraph.initBoard('jxgbox', {
-    boundingbox: [-13, 700, 13, -700],
-    axis: true,
-    showCopyright: false
-});
+// const board = JXG.JSXGraph.initBoard('jxgbox', {
+//     boundingbox: [-13, 700, 13, -700],
+//     axis: true,
+//     showCopyright: false
+// });
 
 
 
@@ -40,25 +40,25 @@ function pacejka(x) {
         )
     );
 }
-let xAxis = board.defaultAxes.x;
-let yAxis = board.defaultAxes.y;
-yAxis.defaultTicks.setAttribute({
-    label: {
-        strokeColor: 'white'
-    }
-});
-xAxis.defaultTicks.setAttribute({
-    label: {
-        strokeColor: 'white'
-    }
-});
-let point = board.create('point', [0,
-    pacejka(0)], {
-    name: 'P',
-    size: 5,
-    color: 'red'
-});
-let curve = board.create('functiongraph', [pacejka, -13, 13]);
+// let xAxis = board.defaultAxes.x;
+// let yAxis = board.defaultAxes.y;
+// yAxis.defaultTicks.setAttribute({
+//     label: {
+//         strokeColor: 'white'
+//     }
+// });
+// xAxis.defaultTicks.setAttribute({
+//     label: {
+//         strokeColor: 'white'
+//     }
+// });
+// let point = board.create('point', [0,
+//     pacejka(0)], {
+//     name: 'P',
+//     size: 5,
+//     color: 'red'
+// });
+// let curve = board.create('functiongraph', [pacejka, -13, 13]);
 
 let renderer = new THREE.WebGLRenderer({antialias:true})
 renderer.setSize(window.innerWidth,window.innerHeight)
@@ -93,7 +93,6 @@ camera.position.set(0,0.6,.11)
 camera.lookAt(0,0.5,-.9)
 povcamera.position.set(0,1,-0.1)
 scene.add(grid)
-scene.add(axes)
 scene.add(sun)
 
 let dracoLoader = new DRACOLoader()
@@ -117,12 +116,13 @@ let boxhelper = new THREE.Box3Helper(box,new THREE.Color('yellow'))
 let things = new THREE.Vector3()
 box.getSize(things)
 let ccScene = crazyCart
-cccGroup.add(boxhelper);
+// cccGroup.add(boxhelper);
 cccGroup.add(ccScene);
 cccGroup.add(camera)
-cccGroup.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
+// cccGroup.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
 cccGroup.add(rayhelper)
 cccGroup.add(rayhelper2)
+cccGroup.add(axes)
 
 scene.add(cccGroup)
 // scene.add(chelper)
@@ -158,15 +158,17 @@ let Cart = function(mass,mesh){
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
     this.prevYaw = 0;this.yaw = 0;this.prevSteeringAngle = 0;this.steeringAngle = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
-    this.parts =[new wheel(0.5,0.09647,this.mass,103,CFG.loadFront), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster)]
+    this.parts =[new wheel(0.5,0.09647,this.mass,103,CFG.loadFront,0,4.2), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,2.5,-2),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,-2.5,-2)]
     
+    this.momentOfinertia = 1/2 * this.mass * 0.3 * 0.3
+
     // for drawing and better visuals
-    this.HeadingVector = new THREE.Vector3(0,0,-1);
+    this.HeadingVector = new THREE.Vector3(0,0,1);
     this.SideVector = new THREE.Vector3(1,0,0);
 
 }
 
-let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption){
+let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption,xToCm,yToCm){
     this.mass = mass
     this.radius = radius
     this.cartMass = cartMass
@@ -179,6 +181,7 @@ let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption){
     this.slipAngle = 0
     this.slipRatio = 0
     this.angularV = 0
+    this.cordsToCm = new THREE.Vector2(xToCm,yToCm)
     this.maxTorque = maxTorque 
     this.momentOfinertia = 1/2 * this.mass * radius * radius
 }
@@ -221,14 +224,14 @@ let ccBody = new Cart(159.7,ccScene)
 // ccBody.y = 10
 // cccGroup.position.y = 10
 let modelWheels = [ccScene.children[0].children[0].children[1]]
-createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.multiplyScalar(5),"blue")
-createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"red")
+// createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.multiplyScalar(5),"blue")
+// createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"red")
 
 let fwd = createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.HeadingVector.multiplyScalar(5),"yellow",ccScene.children[0].children[0])
-createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"green",ccScene.children[0].children[0])
+// createHelperForVectors(new THREE.Vector3(0,0,0),ccBody.SideVector.multiplyScalar(5),"green",ccScene.children[0].children[0])
 
-let forceResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"cyan",ccScene.children[0].children[0])
-let speedResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"#FF9100",ccScene.children[0].children[0])
+// let forceResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"cyan",ccScene.children[0].children[0])
+// let speedResultant = createHelperForVectors(new THREE.Vector3(ccScene.children[0].children[0].position.x,0,ccScene.children[0].children[0].position.z),ccBody.HeadingVector.multiplyScalar(5),"#FF9100",ccScene.children[0].children[0])
 const slippingState = {
     get Slipping() {
         return ccBody.parts.some(wheel => wheel.isSliding);
@@ -290,29 +293,28 @@ function step(dt){
             let resultantForce =  Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
             // There is some issue with the victors here fix it
             if(i ==0 ){
-                let fwPos = fwd.geometry.attributes.position
+                // let fwPos = fwd.geometry.attributes.instanceEnd
+                // console.log(fwPos)
+                // console.log(fwPos.getZ(0) / fwPos.getZ(0))
+
+                // let localFwd = new THREE.Vector3(fwPos.getX(0),0,fwPos.getZ(0) / fwPos.getZ(0) )
+                // let rotatedVector = localFwd.clone().applyAxisAngle(
+                //     new THREE.Vector3(0, 1, 0),
+                //     (ccBody.yaw + ccBody.steeringAngle)
+                // );
+                // console.log(ccBody.yaw + ccBody.steeringAngle)
+
+                // let angle = Math.atan2(
+                //     ccBody.vx * rotatedVector.z - ccBody.vz* rotatedVector.x,
+                //     ccBody.vx * rotatedVector.x + ccBody.vz * rotatedVector.z
+                // );
+                // wheel.slipAngle = Number.isNaN(angle) ? 0 : angle;
                 
-                let fwVector = new THREE.Vector3(fwPos.getZ(1),0,fwPos.getX(1))
-                let rotatedVector = fwVector.clone().applyAxisAngle(
-                    new THREE.Vector3(0, 1, 0),
-                    (ccBody.yaw + ccBody.steeringAngle)
-                );
-                let angle = Math.atan2(
-                    ccBody.vx * rotatedVector.z - ccBody.vz* rotatedVector.x,
-                    ccBody.vx * rotatedVector.x + ccBody.vz * rotatedVector.z
-                );
-                wheel.slipAngle = Number.isNaN(angle) ? 0 : angle;
-                // console.log(ccBody.vx);
-                // console.log(ccBody.vz);
-                // console.log(rotatedVector.z);
-                // console.log(angle/ Math.PI * 180);
-                // console.log((wheel.slipAngle)/ Math.PI * 180);
-                
-                let lateralForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce)
-                point.moveTo([wheel.slipAngle /Math.PI * 180,lateralForce])   
-                FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw) + lateralForce * Math.sin(ccBody.yaw ) * Math.sign(wheel.slipAngle)
-                FxwheelFrictionForce += lateralForce * Math.cos(ccBody.yaw)* Math.sign(wheel.slipAngle)
-                console.log(FxwheelFrictionForce)
+                // let lateralForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce)
+                // // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])   
+                // FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw) + lateralForce * Math.sin(ccBody.yaw) * Math.sign(wheel.slipAngle)
+                // FxwheelFrictionForce += lateralForce * Math.cos(ccBody.yaw)* Math.sign(wheel.slipAngle)
+                // console.log(FxwheelFrictionForce)
             }
         }
     })
@@ -369,7 +371,7 @@ function step(dt){
     ccBody.prevSteeringAngle = ccBody.steeringAngle
     ccBody.prevAngularV = ccBody.angularV
         
-    ccBody.yaw += (FxnetForce * 0.3 / ccBody.)* dt
+    // ccBody.yaw += ccBody.angularV* dt
     ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
@@ -380,7 +382,7 @@ function draw(alpha){
     // Front wheel 
     modelWheels[0].rotation.x = ccBody.parts[0].prevAngle + ( ccBody.parts[0].angle - ccBody.parts[0].prevAngle) * alpha
     ccScene.children[0].children[0].rotation.y = ccBody.steeringAngle + (ccBody.steeringAngle - ccBody.prevSteeringAngle) * alpha
-    cccGroup.rotation.y = -(ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
+    cccGroup.rotation.y = (ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * alpha;
@@ -402,7 +404,7 @@ function animate(time) {
 
 	controls.update();
 	pcontrols.update();
-    renderer.render(scene, camera );
+    renderer.render(scene, povcamera );
     requestAnimationFrame(animate);
 
 }
