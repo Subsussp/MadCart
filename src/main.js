@@ -93,8 +93,8 @@ let rayhelper2 = new THREE.Line(buffer2,new THREE.LineBasicMaterial({color:"whit
 camera.position.set(0,0.6,.11)
 camera.lookAt(0,0.5,-.9)
 povcamera.position.set(0,1,-0.1)
-// scene.add(grid)
-scene.add(worldAxes)
+scene.add(grid)
+// scene.add(worldAxes)
 scene.add(sun)
 
 let dracoLoader = new DRACOLoader()
@@ -162,7 +162,8 @@ let Cart = function(mass,mesh){
     this.motorForce = new THREE.Vector3(0,0,0)
     this.parts =[new wheel(0.5,0.09647,this.mass,103,CFG.loadFront,0,4.2), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,2.5,-2),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,-2.5,-2)]
     
-    this.momentOfinertia = 1/2 * this.mass * 0.3 * 0.3
+    this.momentOfinertia = 1/12 * this.mass * (0.4 ** 2 + 0.63 ** 2)
+    this.angularV = 0;
 
     // for drawing and better visuals
     this.HeadingVector = new THREE.Vector3(0,0,-1);
@@ -266,12 +267,15 @@ function step(dt){
     }else{
         ccBody.vy = 0
     }
+    let torqueY = 0;
+    const sinY = Math.sin(ccBody.yaw), cosY = Math.cos(ccBody.yaw);
     let FznetForce = 0
     let FxnetForce = 0
     let netForce = 0
     let restitanceLeftover = 0
     let FzwheelFrictionForce = 0
     let FxwheelFrictionForce = 0
+    let FxCart = 0
     let fwPos = fwd.geometry.attributes.instanceEnd
     let localFwd = new THREE.Vector3(fwPos.getX(0),0,fwPos.getZ(0)).normalize()
     // let worldCartRotation = ccBody.HeadingVector.dot(new THREE.Vector3(0,0,1)) / (calcauteResultantVector(ccBody.HeadingVector.x,ccBody.HeadingVector.z))
@@ -310,13 +314,13 @@ function step(dt){
                     vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
                 );
                 wheel.slipAngle = Number.isNaN(angle) ? 0 : angle;
-                // console.log(wheel.slipAngle);
                 
-                let lateralForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce)
-                // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])   
-                FzwheelFrictionForce += resultantForce * Math.cos(ccBody.yaw) + lateralForce * Math.sin(ccBody.yaw) * Math.sign(wheel.slipAngle)
+                let lateralForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * throttle
+                // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])  
+                let yawPlusSteering =  ccBody.yaw + ccBody.steeringAngle
+                FzwheelFrictionForce += resultantForce * Math.cos(yawPlusSteering) + lateralForce * Math.sin(yawPlusSteering) 
                 // FzwheelFrictionForce += resultantForce 
-                FxwheelFrictionForce += lateralForce * Math.cos(ccBody.yaw)* Math.sign(wheel.slipAngle)
+                FxwheelFrictionForce += (resultantForce * Math.sin(yawPlusSteering) + lateralForce * Math.cos(yawPlusSteering))
                 // console.log(FxwheelFrictionForce)
             }
         }
@@ -371,10 +375,10 @@ function step(dt){
     ccBody.prevY = ccBody.y
     ccBody.prevZ = ccBody.z
     ccBody.prevYaw = ccBody.yaw
-    ccBody.prevSteeringAngle = ccBody.steeringAngle
-    ccBody.prevAngularV = ccBody.angularV
+    ccBody.prevSteeringAngle = ccBody.steeringAngle;
+    ccBody.prevAngularV = ccBody.angularV;
         
-    // ccBody.yaw += ccBody.angularV* dt
+    ccBody.yaw += -ccBody.steeringAngle * dt
     ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
@@ -409,7 +413,7 @@ function animate(time) {
 
 	controls.update();
 	pcontrols.update();
-    renderer.render(scene, povcamera );
+    renderer.render(scene, camera );
     requestAnimationFrame(animate);
 
 }
