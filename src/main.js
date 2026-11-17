@@ -320,25 +320,35 @@ function step(dt){
                 new THREE.Vector3(0, 1, 0),
                 (ccBody.steeringAngle + ccBody.yaw)
             );
-            
+            console.log(rotatedVector.x)
             let vVector = new THREE.Vector3(ccBody.vx,0,ccBody.vz)
+            console.log(vVector)
             // console.log(vVector.x)
             let angle = Math.atan2(
                 vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
                 vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
             );
+
             wheel.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
             
             
             // let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
-            let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * throttle 
+            let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * Math.sign(wheel.slipAngle) * throttle
             // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])  
+            let forceMagnitude = Math.sqrt(
+                driveForce ** 2 + latForce ** 2
+            );
+            if(forceMagnitude >= wheel.maxStaticFrictionForce){
+                let scale = wheel.maxStaticFrictionForce / forceMagnitude
+                driveForce *= scale
+                latForce *= scale
+            }
             let yawPlusSteering =  ccBody.yaw + (i ==0 ? ccBody.steeringAngle:0)
-            FzwheelFrictionForce += driveForce * Math.cos(yawPlusSteering) + latForce * Math.sin(yawPlusSteering)
+            FzwheelFrictionForce += driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
+            FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
             // FzwheelFrictionForce += resultantForce 
-            FzCart += driveForce * Math.cos(ccBody.steeringAngle)
-            FxCart += latForce * Math.cos(ccBody.steeringAngle)
-            FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering) ) 
+            // FzCart += driveForce * Math.cos(ccBody.steeringAngle)
+            // FxCart += latForce * Math.cos(ccBody.steeringAngle)
             
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
@@ -362,33 +372,33 @@ function step(dt){
     let ax = FxnetForce / (ccBody.mass + restitanceLeftover ) 
     // console.log(ax );
 
-    // if(FxnetForce || FznetForce){
-    //         let end2 = new THREE.Vector3(0,0, FznetForce / 100)
-    //         let points2 = [
-    //         new THREE.Vector3(0,0,0)
-    //         ,
-    //         end2
-    //     ]
+    if(FxnetForce || FznetForce){
+            let end2 = new THREE.Vector3(0,0, FznetForce / 100)
+            let points2 = [
+            new THREE.Vector3(0,0,0)
+            ,
+            end2
+        ]
 
-    //     cartFwd.geometry.setFromPoints(points2)
-    //         let end3 = new THREE.Vector3(FxnetForce / 100,0, 0)
+        cartFwd.geometry.setFromPoints(points2)
+            let end3 = new THREE.Vector3(FxnetForce / 100,0, 0)
 
-    //         let points3 = [
-    //         new THREE.Vector3(0,0,0)
-    //         ,
-    //         end3
-    //     ]
-    //     cartsd.geometry.setFromPoints(points3)
+            let points3 = [
+            new THREE.Vector3(0,0,0)
+            ,
+            end3
+        ]
+        cartsd.geometry.setFromPoints(points3)
 
-    //     let end = new THREE.Vector3(FxnetForce,0, FznetForce)
-    //     end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
-    //     let points = [
-    //         new THREE.Vector3(0,0,0)
-    //         ,
-    //         end
-    //     ]
-    //     forceResultant.geometry.setFromPoints(points);
-    // }
+        // let end = new THREE.Vector3(FxnetForce,0, FznetForce)
+        // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
+        // let points = [
+        //     new THREE.Vector3(0,0,0)
+        //     ,
+        //     end
+        // ]
+        // forceResultant.geometry.setFromPoints(points);
+    }
 
     ccBody.az = az
     ccBody.vz += az * dt
@@ -426,7 +436,7 @@ function step(dt){
     // torqueY = ccBody.parts[0].cordsToCm.y * FxCart 
     // ccBody.angularV += torqueY / ccBody.momentOfinertia * dt;
     
-    ccBody.yaw = CFG.yaw    
+    // ccBody.yaw = CFG.yaw    
     ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
