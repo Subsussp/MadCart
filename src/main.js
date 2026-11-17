@@ -122,7 +122,7 @@ let ccScene = crazyCart
 // cccGroup.add(boxhelper);
 cccGroup.add(ccScene);
 cccGroup.add(camera)
-// ccScene.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
+ccScene.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
 cccGroup.add(rayhelper)
 cccGroup.add(rayhelper2)
 cccGroup.add(axes)
@@ -185,7 +185,7 @@ let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption,xToCm,yToCm)
     this.slipAngle = 0
     this.slipRatio = 0
     this.angularV = 0
-    this.cordsToCm = new THREE.Vector2(xToCm,yToCm)
+    this.cordsToCm = new THREE.Vector3(xToCm,0,yToCm)
     this.maxTorque = maxTorque 
     this.momentOfinertia = 1/2 * this.mass * radius * radius
 }
@@ -278,7 +278,7 @@ function step(dt){
     }else{
         ccBody.vy = 0
     }
-    let torqueY = 0;
+    let totalTorqueY = 0;
     const sinY = Math.sin(ccBody.yaw), cosY = Math.cos(ccBody.yaw);
     let FznetForce = 0
     let FxnetForce = 0
@@ -320,9 +320,23 @@ function step(dt){
                 new THREE.Vector3(0, 1, 0),
                 (ccBody.steeringAngle + ccBody.yaw)
             );
-            console.log(rotatedVector.x)
-            let vVector = new THREE.Vector3(ccBody.vx,0,ccBody.vz)
-            console.log(vVector)
+
+            let r = wheel.cordsToCm.clone().applyAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    ccBody.yaw
+                );
+            let omega = new THREE.Vector3(
+                0,
+                ccBody.angularV,
+                0
+            );
+
+            let rotationalVelocity = omega.clone().cross(r);
+            let vVector =  new THREE.Vector3(
+                ccBody.vx,
+                0,
+                ccBody.vz
+            ).add(rotationalVelocity);
             // console.log(vVector.x)
             let angle = Math.atan2(
                 vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
@@ -347,9 +361,9 @@ function step(dt){
             FzwheelFrictionForce += driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
             FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
             // FzwheelFrictionForce += resultantForce 
-            // FzCart += driveForce * Math.cos(ccBody.steeringAngle)
-            // FxCart += latForce * Math.cos(ccBody.steeringAngle)
-            
+            FzCart += driveForce * Math.cos(ccBody.steeringAngle) - latForce * Math.sin(ccBody.steeringAngle)
+            FxCart += latForce * Math.cos(ccBody.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
+            totalTorqueY += r.z * FxwheelFrictionForce - r.x * FzwheelFrictionForce;
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
             // let points = [
@@ -433,16 +447,16 @@ function step(dt){
     ccBody.prevYaw = ccBody.yaw
     ccBody.prevSteeringAngle = ccBody.steeringAngle;
     ccBody.prevAngularV = ccBody.angularV;
-    // torqueY = ccBody.parts[0].cordsToCm.y * FxCart 
-    // ccBody.angularV += torqueY / ccBody.momentOfinertia * dt;
+    // totalTorqueY = ccBody.parts[0].cordsToCm.y * FxCart 
+    ccBody.angularV += totalTorqueY / ccBody.momentOfinertia * dt;
     
-    // ccBody.yaw = CFG.yaw    
+    ccBody.yaw += -ccBody.angularV * dt
     ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
     
 }
-crazyCart.traverse((child)=>(!child.isLine2 && child.children.length <= 0) ? child.visible = false : '')
+// crazyCart.traverse((child)=>(!child.isLine2 && child.children.length <= 0) ? child.visible = false : '')
 
 function draw(alpha){
     // Front wheel 
@@ -472,7 +486,7 @@ function animate(time) {
 
 	controls.update();
 	pcontrols.update();
-    renderer.render(scene, povcamera );
+    renderer.render(scene, camera );
     requestAnimationFrame(animate);
 
 }
