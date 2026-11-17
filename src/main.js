@@ -121,7 +121,7 @@ let ccScene = crazyCart
 // cccGroup.add(boxhelper);
 cccGroup.add(ccScene);
 cccGroup.add(camera)
-cccGroup.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
+// ccScene.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
 cccGroup.add(rayhelper)
 cccGroup.add(rayhelper2)
 cccGroup.add(axes)
@@ -142,7 +142,7 @@ let CFG = {
     loadFront: 0.470,
     loadCaster: 0.265,
     // loadCaster: 1/3,
-
+    yaw: 0,
     airDrag:2,
     staticFriction: 0.9,
     KineticFriction:0.7
@@ -243,8 +243,18 @@ const slippingState = {
 const throttleState = { throttle: 0 };
 let throttleValue = statusFolder.add(throttleState, "throttle").step(0.001).listen();
 let carVelocityValue = statusFolder.add(ccBody, "vz").step(0.001).listen();
+let carVelociyValue = statusFolder.add(ccBody, "vx").step(0.001).listen();
 let carAValue = statusFolder.add(ccBody, "az").step(0.001).listen();
+
+let slip = {
+    get slipAngle() {
+        return ccBody.parts[0].slipAngle / Math.PI * 180;
+    }
+};
+
+let slipAngle = statusFolder.add(slip, "slipAngle").listen();
 let isSliding = statusFolder.add(slippingState, "Slipping").listen();
+let yaw = statusFolder.add(CFG, "yaw").step(Math.PI / 6).listen();
 isSliding.domElement.style.pointerEvents = "none"
 throttleValue.domElement.style.pointerEvents = "none"
 
@@ -302,18 +312,23 @@ function step(dt){
         }else{
             let driveForce =  Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
             // There is some issue with the victors here fix it
+            // console.log(ccBody.yaw);
+            
             let rotatedVector = localFwd.clone().applyAxisAngle(
                 new THREE.Vector3(0, 1, 0),
-                (ccBody.steeringAngle)
+                (ccBody.steeringAngle + ccBody.yaw)
             );
+            console.log(rotatedVector);
+            
             let vVector = new THREE.Vector3(ccBody.vx,0,ccBody.vz)
-            vVector.applyQuaternion(cccGroup.quaternion)
+            // console.log(vVector.x)
+            // console.log(vVector.z)
             let angle = Math.atan2(
                 vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
                 vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
             );
             wheel.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
-            console.log(wheel.slipAngle);
+            
             
             let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * throttle
             // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])  
@@ -323,7 +338,6 @@ function step(dt){
             FzCart += driveForce * Math.cos(ccBody.steeringAngle)
             FxCart += latForce * Math.cos(ccBody.steeringAngle)
             FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering) ) 
-            console.log(latForce);
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
             // let points = [
@@ -339,7 +353,10 @@ function step(dt){
     // calculating net force and accelration
     let [Fx,Fz] = ccBody.calcuateDrag(CFG.airDrag)
     FznetForce = (FzwheelFrictionForce + Fz )
-    FxnetForce = (FxwheelFrictionForce + Fx )
+    FxnetForce = (FxwheelFrictionForce + Fx ) 
+
+    // console.log(FxwheelFrictionForce);
+
     let az = FznetForce / (ccBody.mass + restitanceLeftover ) 
     let ax = FxnetForce / (ccBody.mass + restitanceLeftover ) 
 
@@ -407,7 +424,7 @@ function step(dt){
     torqueY = ccBody.parts[0].cordsToCm.y * FxCart 
     ccBody.angularV += torqueY / ccBody.momentOfinertia * dt;
     
-    ccBody.yaw += -ccBody.angularV * dt           
+    ccBody.yaw = CFG.yaw    
     ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
@@ -417,8 +434,8 @@ function step(dt){
 function draw(alpha){
     // Front wheel 
     modelWheels[0].rotation.x = ccBody.parts[0].prevAngle + ( ccBody.parts[0].angle - ccBody.parts[0].prevAngle) * alpha
-    ccScene.children[0].children[0].rotation.y = ccBody.steeringAngle + (ccBody.steeringAngle - ccBody.prevSteeringAngle) * alpha
-    // console.log(cccGroup.quaternion);
+    ccScene.children[0].children[0].rotation.y = ccBody.prevSteeringAngle + (ccBody.steeringAngle - ccBody.prevSteeringAngle) * alpha
+    // console.log(ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw));
 
     cccGroup.rotation.y = (ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
