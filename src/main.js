@@ -220,29 +220,29 @@ function wrapAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 function wheelForce(c,w,throttle,dt = 1/120) {
-     let driveForce =  Math.min( w.maxTorque / w.radius * inputs.throttle , w.maxStaticFrictionForce)
+     let driveForce = w.isPoweredWheel ? Math.min( w.maxTorque / w.radius * throttle , w.load * CFG.TUNE.staticFriction) : 0
     // console.log(ccBody.yaw);
     
-    let rotatedVector = ccBody.FrontwDirection.clone().applyAxisAngle(
+    let rotatedVector = c.FrontWheelDirection.clone().applyAxisAngle(
         new THREE.Vector3(0, 1, 0),
-        (ccBody.steeringAngle + ccBody.yaw)
+        (c.steeringAngle + c.yaw)
     );
 
     let r = w.cordsToCm.clone().applyAxisAngle(
             new THREE.Vector3(0, 1, 0),
-            ccBody.yaw
+            c.yaw
         );
     let omega = new THREE.Vector3(
         0,
-        ccBody.angularV,
+        c.angularV,
         0
     );
 
     let rotationalVelocity = omega.clone().cross(r);
     let vVector =  new THREE.Vector3(
-        ccBody.vx,
+        c.vx,
         0,
-        ccBody.vz
+        c.vz
     ).add(rotationalVelocity);
     // console.log(vVector.x)
     let angle = Math.atan2(
@@ -253,7 +253,7 @@ function wheelForce(c,w,throttle,dt = 1/120) {
     w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
     
     
-    // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
+    // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * throttle * c.SideVector.x 
     let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
     // point.moveTo([w.slipAngle /Math.PI * 180,-lateralForce])  
     let forceMagnitude = Math.sqrt(
@@ -264,12 +264,15 @@ function wheelForce(c,w,throttle,dt = 1/120) {
         driveForce *= scale
         latForce *= scale
     }
-    let yawPlusSteering =  ccBody.yaw + (i ==0 ? ccBody.steeringAngle:0)
-    FzwheelFrictionForce += driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
-    FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
+    let yawPlusSteering =  c.yaw + (w.isPoweredWheel ? c.steeringAngle:0)
+    
+    
+    w.Fx = (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
+    w.Fz = driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
+
     // FzwheelFrictionForce += resultantForce 
-    c.FzCart += driveForce * Math.cos(ccBody.steeringAngle) - latForce * Math.sin(ccBody.steeringAngle)
-    c.FxCart += latForce * Math.cos(ccBody.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
+    // c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
+    // c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
 }
 
 Cart.prototype.calcuateDrag = function(drag){
@@ -402,9 +405,9 @@ function step(dt){
             // FzwheelFrictionForce += resultantForce 
             FxnetForce += wheel.Fx 
             FznetForce += wheel.Fz 
-
             
-            totalTorqueY += wheel.rz *  wheel.Fx  - wheel.rx *  wheel.Fz ;
+            
+            // totalTorqueY += wheel.rz *  wheel.Fx  - wheel.rx *  wheel.Fz ;
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
             // let points = [
@@ -489,9 +492,9 @@ function step(dt){
     ccBody.prevAngularV = ccBody.angularV;
     // totalTorqueY = ccBody.parts[0].cordsToCm.y * FxCart 
     
-    ccBody.spin += totalTorqueY / ccBody.Inertia * dt;
+    // ccBody.spin += totalTorqueY / ccBody.Inertia * dt;
     
-    ccBody.yaw += ccBody.spin * dt
+    // ccBody.yaw += ccBody.spin * dt
     ccBody.steeringAngle += inputs.steer * 1/2 * PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
@@ -557,11 +560,12 @@ window.addEventListener('keydown',(e)=>{
 
     }
 })
-window.addEventListener('keyup',(e)=>{keys[e.code] = false
+window.addEventListener('keyup',(e)=>{
+    keys[e.code] = false
     if(e.code == "KeyW"){
-        throttle = 0
         clearInterval(timeHandle)
         timeHandle = null
+        throttle = 0
     }
 })
 
