@@ -138,7 +138,13 @@ let CFG = {
     gravity: -9.81,
     mass: 150,
     // maxTorqu:3800, // in Newton
-
+    TUNE: {
+        assist: 0.6
+    },
+    barYawDamping: 1.5,
+    casterAlignRate: 10,
+    casterLockRate: 40, 
+    casterGripLoss: 0.2,
     // loadFront: 1/3,
     loadFront: 0.470,
     loadCaster: 0.265,
@@ -153,18 +159,20 @@ let Cart = function(mass,mesh){
     this.mesh = mesh
     this.mass = mass
 
-
+    this.FxCart = 0.0; this.FzCart = 0.0;
     this.vx = 0.0;this.x = 0.0
     this.vy = 0.0;this.y = 0.0
     this.vz = 0.0; this.z = 0.0
     this.az= 0.0
     this.prevX = 0.0;this.prevY = 0.0;this.prevZ = 0.0;
-    this.prevYaw = 0;this.yaw = 0;this.prevSteeringAngle = 0;this.steeringAngle = 0;
+    this.prevYaw = 0;this.yaw = 0;
+    this.prevSteeringAngle = 0;this.steeringAngle = 0;
     this.motorForce = new THREE.Vector3(0,0,0)
     this.parts =[new wheel(0.5,0.09647,this.mass,103,CFG.loadFront,0,4.2), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,2.5,-2),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,-2.5,-2)]
     
-    this.momentOfinertia = 1/12 * this.mass * (0.4 ** 2 + 0.63 ** 2)
-    this.angularV = 0;
+    this.Inertia = 1/12 * this.mass * (0.4 ** 2 + 0.63 ** 2)
+    this.spin = 0;
+    this.bar= 0;
 
     // for drawing and better visuals
     this.FrontWheelDirection = new THREE.Vector3(0,0,1);
@@ -177,11 +185,15 @@ let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption,xToCm,yToCm)
     this.radius = radius
     this.cartMass = cartMass
 
+    this.Fx = 0;this.Fz = 0;
+    this.rx = 0;this.rz = 0;
     this.angle = 0;this.prevAngle = 0;
+    this.isPoweredWheel = maxTorque > 0
     this.isSliding = false;
     this.maxStaticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.staticFriction;
     this.maxKineticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.KineticFriction;
     this.prevAngularV = 0;
+    this.heading = 0; 
     this.slipAngle = 0
     this.slipRatio = 0
     this.angularV = 0
@@ -199,8 +211,62 @@ wheel.prototype.updateSlipping = function (throttle) {
     }
 }
 
-Cart.prototype.updateAcceleration = function() {
+function wheelForce(c,w,throttle,r,dt = 1/12) {
+    const vx = c.vx + c.spin * w.rz;
+    const vz = c.vz - c.spin * w.rx;
+    const pointSpeed = Math.hypot(vx, vz);
+    const looseness = c.bar * TUNE.loose; 
+    let driveForce =  Math.min( w.maxTorque / w.radius * throttle , w.maxStaticFrictionForce)
+    let yawPlusSteering =  c.yaw + c.steeringAngle
+    let rotatedVector = c.FrontWheelDirection.clone().applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        (c.steeringAngle + c.yaw)
+    );
+    let omega = new THREE.Vector3(
+        0,
+        c.angularV,
+        0
+    );
 
+    let rotationalVelocity = omega.clone().cross(r);
+    let vVector =  new THREE.Vector3(
+        c.vx,
+        0,
+        c.vz
+    ).add(rotationalVelocity);
+    let angle = Math.atan2(
+        vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
+        vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
+    );
+
+    w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
+    
+    if(w.isPoweredWheel){
+        w.heading = yawPlusSteering
+    }else{
+        if (pointSpeed > 0.2) {
+        let err = angle;   // angle between wheel and travel direction
+        if (err > PI / 2) err -= PI; else if (err < -PI / 2) err += PI; // a wheel rolls both ways, so max error is 90deg
+        w.heading += err * Math.min(1, pointSpeed * CFG.casterAlignRate * dt) * looseness;
+        }
+    }
+
+  
+    
+    let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
+    let forceMagnitude = Math.sqrt(
+        driveForce ** 2 + latForce ** 2
+    );
+    if(forceMagnitude >= w.maxStaticFrictionForce){
+        let scale = w.maxStaticFrictionForce / forceMagnitude
+        driveForce *= scale
+        latForce *= scale
+    }
+    c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(c.steeringAngle)
+    c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
+            
+    w.Fz = driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
+    w.Fx = (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
 }
 
 Cart.prototype.calcuateDrag = function(drag){
@@ -278,10 +344,11 @@ function step(dt){
     }else{
         ccBody.vy = 0
     }
-    let totalTorqueY = 0;
+    let totalTorqueY = -(CFG.TUNE.assist + CFG.barYawDamping * ccBody.bar) * ccBody.spin * ccBody.Inertia;
     const sinY = Math.sin(ccBody.yaw), cosY = Math.cos(ccBody.yaw);
-    let FznetForce = 0
-    let FxnetForce = 0
+    let [Fx,Fz] = ccBody.calcuateDrag(CFG.airDrag)
+    let FznetForce = Fz
+    let FxnetForce = Fx
     let netForce = 0
     let restitanceLeftover = 0
     let FzwheelFrictionForce = 0
@@ -312,58 +379,25 @@ function step(dt){
             FzwheelFrictionForce +=  traction
             FxwheelFrictionForce +=  resultantForce * Math.sin(ccBody.yaw)
         }else{
-            let driveForce =  Math.min( wheel.maxTorque / wheel.radius * inputs.throttle , wheel.maxStaticFrictionForce)
-            // There is some issue with the victors here fix it
-            // console.log(ccBody.yaw);
-            
-            let rotatedVector = ccBody.FrontWheelDirection.clone().applyAxisAngle(
-                new THREE.Vector3(0, 1, 0),
-                (ccBody.steeringAngle + ccBody.yaw)
-            );
-
             let r = wheel.cordsToCm.clone().applyAxisAngle(
                     new THREE.Vector3(0, 1, 0),
                     ccBody.yaw
                 );
-            let omega = new THREE.Vector3(
-                0,
-                ccBody.angularV,
-                0
-            );
-
-            let rotationalVelocity = omega.clone().cross(r);
-            let vVector =  new THREE.Vector3(
-                ccBody.vx,
-                0,
-                ccBody.vz
-            ).add(rotationalVelocity);
+            wheel.rx = r.x
+            wheel.rz = r.z
+            wheelForce(ccBody,wheel,inputs.throttle,r)
+            
+            // There is some issue with the victors here fix it
+            // console.log(ccBody.yaw);
             // console.log(vVector.x)
-            let angle = Math.atan2(
-                vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
-                vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
-            );
-
-            wheel.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
-            
-            
             // let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
-            let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * Math.sign(wheel.slipAngle) * throttle
             // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])  
-            let forceMagnitude = Math.sqrt(
-                driveForce ** 2 + latForce ** 2
-            );
-            if(forceMagnitude >= wheel.maxStaticFrictionForce){
-                let scale = wheel.maxStaticFrictionForce / forceMagnitude
-                driveForce *= scale
-                latForce *= scale
-            }
-            let yawPlusSteering =  ccBody.yaw + (i ==0 ? ccBody.steeringAngle:0)
-            FzwheelFrictionForce += driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
-            FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
             // FzwheelFrictionForce += resultantForce 
-            FzCart += driveForce * Math.cos(ccBody.steeringAngle) - latForce * Math.sin(ccBody.steeringAngle)
-            FxCart += latForce * Math.cos(ccBody.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
-            totalTorqueY += r.z * FxwheelFrictionForce - r.x * FzwheelFrictionForce;
+            FxnetForce += wheel.Fx 
+            FznetForce += wheel.Fz 
+
+            
+            totalTorqueY += r.z * ccBody.FxCart - r.x * ccBody.FzCart;
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
             // let points = [
@@ -377,9 +411,8 @@ function step(dt){
     })
 
     // calculating net force and accelration
-    let [Fx,Fz] = ccBody.calcuateDrag(CFG.airDrag)
-    FznetForce = (FzwheelFrictionForce + Fz ) 
-    FxnetForce = (FxwheelFrictionForce + Fx )
+
+
 
 
     let az = FznetForce / (ccBody.mass + restitanceLeftover ) 
@@ -448,9 +481,10 @@ function step(dt){
     ccBody.prevSteeringAngle = ccBody.steeringAngle;
     ccBody.prevAngularV = ccBody.angularV;
     // totalTorqueY = ccBody.parts[0].cordsToCm.y * FxCart 
-    ccBody.angularV += totalTorqueY / ccBody.momentOfinertia * dt;
     
-    ccBody.yaw += -ccBody.angularV * dt
+    ccBody.spin += totalTorqueY / ccBody.Inertia * dt;
+    
+    ccBody.yaw += ccBody.spin * dt
     ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
