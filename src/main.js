@@ -12,8 +12,7 @@ import * as JXG from 'jsxgraph'
 let width = window.innerWidth
 let height = window.innerHeight
 let throttle = 0
-let steeringAngle = 0
-
+let PI= Math.PI
 // everything that has to do with Three js and the visual state/drawing
 let gui = new dat.GUI({name:'Testing'})
 let statusFolder = gui.addFolder('data')
@@ -122,7 +121,7 @@ let ccScene = crazyCart
 // cccGroup.add(boxhelper);
 cccGroup.add(ccScene);
 cccGroup.add(camera)
-ccScene.rotateOnWorldAxis(new THREE.Vector3(0,1,0),Math.PI)
+ccScene.rotateOnWorldAxis(new THREE.Vector3(0,1,0),PI)
 cccGroup.add(rayhelper)
 cccGroup.add(rayhelper2)
 cccGroup.add(axes)
@@ -138,8 +137,13 @@ let CFG = {
     gravity: -9.81,
     mass: 150,
     // maxTorqu:3800, // in Newton
+    frontStiffness: 900,
+    casterStiffness: 500,
     TUNE: {
-        assist: 0.6
+        assist: 0.6,
+        loose: 0.4,
+        staticFriction: 0.9,
+
     },
     barYawDamping: 1.5,
     casterAlignRate: 10,
@@ -151,7 +155,6 @@ let CFG = {
     // loadCaster: 1/3,
     yaw: 0,
     airDrag:2,
-    staticFriction: 0.9,
     KineticFriction:0.7
 }
 
@@ -170,7 +173,7 @@ let Cart = function(mass,mesh){
     this.motorForce = new THREE.Vector3(0,0,0)
     this.parts =[new wheel(0.5,0.09647,this.mass,103,CFG.loadFront,0,4.2), new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,2.5,-2),new wheel(0.2,0.037988,this.mass,0,CFG.loadCaster,-2.5,-2)]
     
-    this.Inertia = 1/12 * this.mass * (0.4 ** 2 + 0.63 ** 2)
+    this.Inertia = 1/12 * this.mass * (0.627309 ** 2 +  0.885311 ** 2)
     this.spin = 0;
     this.bar= 0;
 
@@ -190,7 +193,7 @@ let wheel = function(mass,radius,cartMass,maxTorque,loadDistruption,xToCm,yToCm)
     this.angle = 0;this.prevAngle = 0;
     this.isPoweredWheel = maxTorque > 0
     this.isSliding = false;
-    this.maxStaticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.staticFriction;
+    this.load = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) ;
     this.maxKineticFrictionForce = ((this.cartMass + this.mass) * loadDistruption * -CFG.gravity) * CFG.KineticFriction;
     this.prevAngularV = 0;
     this.heading = 0; 
@@ -210,63 +213,81 @@ wheel.prototype.updateSlipping = function (throttle) {
         this.isSliding = false
     }
 }
-
-function wheelForce(c,w,throttle,r,dt = 1/12) {
+const angleToVelocity = (heading, vx, vz) =>
+  Math.atan2(vx * Math.cos(heading) - vz * Math.sin(heading),
+             vx * Math.sin(heading) + vz * Math.cos(heading));
+function wrapAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+function wheelForce(c,w,throttle,dt = 1/120) {
+    const cos = Math.cos(c.yaw), sin = Math.sin(c.yaw);
+    w.rx = w.cordsToCm.x * cos + w.cordsToCm.z * sin;
+    w.rz = -w.cordsToCm.x  * sin + w.cordsToCm.z * cos;
     const vx = c.vx + c.spin * w.rz;
     const vz = c.vz - c.spin * w.rx;
     const pointSpeed = Math.hypot(vx, vz);
-    const looseness = c.bar * TUNE.loose; 
-    let driveForce =  Math.min( w.maxTorque / w.radius * throttle , w.maxStaticFrictionForce)
-    let yawPlusSteering =  c.yaw + c.steeringAngle
-    let rotatedVector = c.FrontWheelDirection.clone().applyAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        (c.steeringAngle + c.yaw)
-    );
-    let omega = new THREE.Vector3(
-        0,
-        c.angularV,
-        0
-    );
-
-    let rotationalVelocity = omega.clone().cross(r);
-    let vVector =  new THREE.Vector3(
-        c.vx,
-        0,
-        c.vz
-    ).add(rotationalVelocity);
-    let angle = Math.atan2(
-        vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
-        vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
-    );
-
-    w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
+    const looseness = c.bar * CFG.TUNE.loose; 
+    console.log(c.bar);
     
+    let driveForce =  Math.min( w.maxTorque / w.radius * throttle , w.load * CFG.TUNE.staticFriction)
+    let yawPlusSteering =  c.yaw + c.steeringAngle
+    // let rotatedVector = c.FrontWheelDirection.clone().applyAxisAngle(
+    //     new THREE.Vector3(0, 1, 0),
+    //     (c.steeringAngle + c.yaw)
+    // );
+    // let omega = new THREE.Vector3(
+    //     0,
+    //     c.angularV,
+    //     0
+    // );
+
+    // let angle = Math.atan2(
+    //     vx  * rotatedVector.z - vz * rotatedVector.x,
+    //     vx * rotatedVector.x + vz * rotatedVector.z
+    // );
+
+    // w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
+
     if(w.isPoweredWheel){
         w.heading = yawPlusSteering
     }else{
         if (pointSpeed > 0.2) {
-        let err = angle;   // angle between wheel and travel direction
+        let err = angleToVelocity(w.heading, vx, vz);   // angle between wheel and travel direction
         if (err > PI / 2) err -= PI; else if (err < -PI / 2) err += PI; // a wheel rolls both ways, so max error is 90deg
-        w.heading += err * Math.min(1, pointSpeed * CFG.casterAlignRate * dt) * looseness;
+            w.heading += err * Math.min(1, pointSpeed * CFG.casterAlignRate * dt) * looseness;
         }
-    }
+        w.heading += wrapAngle(c.yaw - w.heading) * Math.min(1, CFG.casterLockRate * dt) * (1 - looseness);
 
-  
+        // w.heading += w.slipAngle * Math.min(1, CFG.casterLockRate * dt) * (1 - looseness);
+
+    }
+    const forwardSpeed  = vx * Math.sin(w.heading) + vz * Math.cos(w.heading);
+    const sidewaysSpeed = vx * Math.cos(w.heading) - vz * Math.sin(w.heading);
+    w.slipAngle = Math.atan(sidewaysSpeed / Math.max(Math.abs(forwardSpeed), 4));
+
+    const mu = CFG.TUNE.staticFriction * (w.isPoweredWheel ? 1 : 1 - CFG.casterGripLoss * looseness);
+    let maxForce = w.load * mu
     
-    let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
+    let latForce = -pacejka(Math.abs(w.slipAngle) /PI * 180,maxForce) * Math.sign(w.slipAngle) 
+    const sideX = Math.cos(w.heading), sideZ = -Math.sin(w.heading);
+    const leverArm = w.rz * sideX - w.rx * sideZ;                        // how far off-centre this wheel pushes sideways
+    const inverseMass = 1 / c.mass + (leverArm * leverArm) / c.Inertia;   // how easily the cart moves when pushed here
+    const stopForce = Math.abs(sidewaysSpeed) / (dt * inverseMass) / 3;   // force that just cancels the skid in one step
+    latForce = Math.max(-stopForce, Math.min(stopForce, latForce));
     let forceMagnitude = Math.sqrt(
         driveForce ** 2 + latForce ** 2
     );
-    if(forceMagnitude >= w.maxStaticFrictionForce){
-        let scale = w.maxStaticFrictionForce / forceMagnitude
+
+    if(forceMagnitude >= maxForce){
+        let scale = maxForce / forceMagnitude
         driveForce *= scale
         latForce *= scale
     }
-    c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(c.steeringAngle)
-    c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
-            
-    w.Fz = driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
-    w.Fx = (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
+    // c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(c.steeringAngle) 
+    // c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
+    
+    w.Fz = driveForce * Math.cos(w.heading) - latForce * Math.sin(w.heading)
+    w.Fx = (driveForce * Math.sin(w.heading) + latForce * Math.cos(w.heading)) 
 }
 
 Cart.prototype.calcuateDrag = function(drag){
@@ -309,19 +330,23 @@ const slippingState = {
 };
 const throttleState = { throttle: 0 };
 let throttleValue = statusFolder.add(throttleState, "throttle").step(0.001).listen();
+let aabs = statusFolder.add(CFG.TUNE, 'staticFriction').step(0.001).listen();
+let abs = statusFolder.add(CFG, 'barYawDamping').step(0.001).listen();
+let versioned = statusFolder.add(CFG.TUNE, "assist").step(0.001).listen();
+let Cx = statusFolder.add(CFG.TUNE, "loose").step(0.001).listen();
 let carVelocityValue = statusFolder.add(ccBody, "vz").step(0.001).listen();
 let carVelociyValue = statusFolder.add(ccBody, "vx").step(0.001).listen();
 let carAValue = statusFolder.add(ccBody, "az").step(0.001).listen();
 
 let slip = {
     get slipAngle() {
-        return ccBody.parts[0].slipAngle / Math.PI * 180;
+        return ccBody.parts[0].slipAngle / PI * 180;
     }
 };
 
 let slipAngle = statusFolder.add(slip, "slipAngle").listen();
 let isSliding = statusFolder.add(slippingState, "Slipping").listen();
-let yaw = statusFolder.add(CFG, "yaw").step(Math.PI / 6).listen();
+let yaw = statusFolder.add(CFG, "yaw").step(PI / 6).listen();
 isSliding.domElement.style.pointerEvents = "none"
 throttleValue.domElement.style.pointerEvents = "none"
 
@@ -355,6 +380,7 @@ function step(dt){
     let FxwheelFrictionForce = 0
     let FxCart = 0
     let FzCart = 0
+    ccBody.bar = inputs.driftBar ? 1 :0 
     // let fwPos = fwd.geometry.attributes.instanceEnd
     // let localFwd = new THREE.Vector3(fwPos.getX(0),0,fwPos.getZ(0)).normalize()
 
@@ -383,21 +409,20 @@ function step(dt){
                     new THREE.Vector3(0, 1, 0),
                     ccBody.yaw
                 );
-            wheel.rx = r.x
-            wheel.rz = r.z
-            wheelForce(ccBody,wheel,inputs.throttle,r)
+
+            wheelForce(ccBody,wheel,inputs.throttle,dt)
             
             // There is some issue with the victors here fix it
             // console.log(ccBody.yaw);
             // console.log(vVector.x)
-            // let latForce = -pacejka(Math.abs(wheel.slipAngle) /Math.PI * 180,wheel.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
-            // point.moveTo([wheel.slipAngle /Math.PI * 180,-lateralForce])  
+            // let latForce = -pacejka(Math.abs(wheel.slipAngle) /PI * 180,wheel.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
+            // point.moveTo([wheel.slipAngle /PI * 180,-lateralForce])  
             // FzwheelFrictionForce += resultantForce 
             FxnetForce += wheel.Fx 
             FznetForce += wheel.Fz 
 
             
-            totalTorqueY += r.z * ccBody.FxCart - r.x * ccBody.FzCart;
+            totalTorqueY += wheel.rz *  wheel.Fx  - wheel.rx *  wheel.Fz ;
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
             // let points = [
@@ -485,7 +510,7 @@ function step(dt){
     ccBody.spin += totalTorqueY / ccBody.Inertia * dt;
     
     ccBody.yaw += ccBody.spin * dt
-    ccBody.steeringAngle += inputs.steer * 1/2 * Math.PI * dt;
+    ccBody.steeringAngle += inputs.steer * 1/2 * PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
     
@@ -498,7 +523,7 @@ function draw(alpha){
     ccScene.children[0].children[0].rotation.y = ccBody.prevSteeringAngle + (ccBody.steeringAngle - ccBody.prevSteeringAngle) * alpha
     // console.log(ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw));
 
-    cccGroup.rotation.y = (ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
+    ccScene.children[0].rotation.y = (ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * -alpha;
@@ -538,15 +563,23 @@ window.addEventListener('mouseup',()=>{
 // Player Controls
 
 let keys = {}
+let timeHandle;
 window.addEventListener('keydown',(e)=>{
-    keys[e.code] = true
+    keys[e.code] = true    
     if(e.code == "KeyW"){
-        throttle >= 1 ? (throttle = 1) : (throttle+= + 0.003)
+        if(!timeHandle){
+            timeHandle = setInterval(() => {
+                throttle >= 1 ? (throttle = 1) : (throttle+= + 0.0003)
+            }, 1 /120 * 1000);
+        }
+
     }
 })
 window.addEventListener('keyup',(e)=>{keys[e.code] = false
     if(e.code == "KeyW"){
         throttle = 0
+        clearInterval(timeHandle)
+        timeHandle = null
     }
 })
 
