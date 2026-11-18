@@ -220,74 +220,56 @@ function wrapAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 function wheelForce(c,w,throttle,dt = 1/120) {
-    const cos = Math.cos(c.yaw), sin = Math.sin(c.yaw);
-    w.rx = w.cordsToCm.x * cos + w.cordsToCm.z * sin;
-    w.rz = -w.cordsToCm.x  * sin + w.cordsToCm.z * cos;
-    const vx = c.vx + c.spin * w.rz;
-    const vz = c.vz - c.spin * w.rx;
-    const pointSpeed = Math.hypot(vx, vz);
-    const looseness = c.bar * CFG.TUNE.loose; 
-    console.log(c.bar);
+     let driveForce =  Math.min( w.maxTorque / w.radius * inputs.throttle , w.maxStaticFrictionForce)
+    // console.log(ccBody.yaw);
     
-    let driveForce =  Math.min( w.maxTorque / w.radius * throttle , w.load * CFG.TUNE.staticFriction)
-    let yawPlusSteering =  c.yaw + c.steeringAngle
-    // let rotatedVector = c.FrontWheelDirection.clone().applyAxisAngle(
-    //     new THREE.Vector3(0, 1, 0),
-    //     (c.steeringAngle + c.yaw)
-    // );
-    // let omega = new THREE.Vector3(
-    //     0,
-    //     c.angularV,
-    //     0
-    // );
+    let rotatedVector = ccBody.FrontwDirection.clone().applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        (ccBody.steeringAngle + ccBody.yaw)
+    );
 
-    // let angle = Math.atan2(
-    //     vx  * rotatedVector.z - vz * rotatedVector.x,
-    //     vx * rotatedVector.x + vz * rotatedVector.z
-    // );
+    let r = w.cordsToCm.clone().applyAxisAngle(
+            new THREE.Vector3(0, 1, 0),
+            ccBody.yaw
+        );
+    let omega = new THREE.Vector3(
+        0,
+        ccBody.angularV,
+        0
+    );
 
-    // w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
+    let rotationalVelocity = omega.clone().cross(r);
+    let vVector =  new THREE.Vector3(
+        ccBody.vx,
+        0,
+        ccBody.vz
+    ).add(rotationalVelocity);
+    // console.log(vVector.x)
+    let angle = Math.atan2(
+        vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
+        vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
+    );
 
-    if(w.isPoweredWheel){
-        w.heading = yawPlusSteering
-    }else{
-        if (pointSpeed > 0.2) {
-        let err = angleToVelocity(w.heading, vx, vz);   // angle between wheel and travel direction
-        if (err > PI / 2) err -= PI; else if (err < -PI / 2) err += PI; // a wheel rolls both ways, so max error is 90deg
-            w.heading += err * Math.min(1, pointSpeed * CFG.casterAlignRate * dt) * looseness;
-        }
-        w.heading += wrapAngle(c.yaw - w.heading) * Math.min(1, CFG.casterLockRate * dt) * (1 - looseness);
-
-        // w.heading += w.slipAngle * Math.min(1, CFG.casterLockRate * dt) * (1 - looseness);
-
-    }
-    const forwardSpeed  = vx * Math.sin(w.heading) + vz * Math.cos(w.heading);
-    const sidewaysSpeed = vx * Math.cos(w.heading) - vz * Math.sin(w.heading);
-    w.slipAngle = Math.atan(sidewaysSpeed / Math.max(Math.abs(forwardSpeed), 4));
-
-    const mu = CFG.TUNE.staticFriction * (w.isPoweredWheel ? 1 : 1 - CFG.casterGripLoss * looseness);
-    let maxForce = w.load * mu
+    w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
     
-    let latForce = -pacejka(Math.abs(w.slipAngle) /PI * 180,maxForce) * Math.sign(w.slipAngle) 
-    const sideX = Math.cos(w.heading), sideZ = -Math.sin(w.heading);
-    const leverArm = w.rz * sideX - w.rx * sideZ;                        // how far off-centre this wheel pushes sideways
-    const inverseMass = 1 / c.mass + (leverArm * leverArm) / c.Inertia;   // how easily the cart moves when pushed here
-    const stopForce = Math.abs(sidewaysSpeed) / (dt * inverseMass) / 3;   // force that just cancels the skid in one step
-    latForce = Math.max(-stopForce, Math.min(stopForce, latForce));
+    
+    // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
+    let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
+    // point.moveTo([w.slipAngle /Math.PI * 180,-lateralForce])  
     let forceMagnitude = Math.sqrt(
         driveForce ** 2 + latForce ** 2
     );
-
-    if(forceMagnitude >= maxForce){
-        let scale = maxForce / forceMagnitude
+    if(forceMagnitude >= w.maxStaticFrictionForce){
+        let scale = w.maxStaticFrictionForce / forceMagnitude
         driveForce *= scale
         latForce *= scale
     }
-    // c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(c.steeringAngle) 
-    // c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
-    
-    w.Fz = driveForce * Math.cos(w.heading) - latForce * Math.sin(w.heading)
-    w.Fx = (driveForce * Math.sin(w.heading) + latForce * Math.cos(w.heading)) 
+    let yawPlusSteering =  ccBody.yaw + (i ==0 ? ccBody.steeringAngle:0)
+    FzwheelFrictionForce += driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
+    FxwheelFrictionForce += (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
+    // FzwheelFrictionForce += resultantForce 
+    c.FzCart += driveForce * Math.cos(ccBody.steeringAngle) - latForce * Math.sin(ccBody.steeringAngle)
+    c.FxCart += latForce * Math.cos(ccBody.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
 }
 
 Cart.prototype.calcuateDrag = function(drag){
