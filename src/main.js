@@ -62,8 +62,8 @@ function pacejka(x) {
 let renderer = new THREE.WebGLRenderer({antialias:true})
 renderer.setSize(window.innerWidth,window.innerHeight)
 let scene = new THREE.Scene()
-let camera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
 let povcamera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
+let camera = new THREE.PerspectiveCamera(75,width/height,0.1,1000)
 let grid = new THREE.GridHelper(200,100)
 let worldAxes = new THREE.AxesHelper()
 let axes = new THREE.AxesHelper()
@@ -89,9 +89,10 @@ let rayhelper = new THREE.Line(buffer,new THREE.LineBasicMaterial({color:"white"
 let rayhelper2 = new THREE.Line(buffer2,new THREE.LineBasicMaterial({color:"white"}))
 // roup.add(ray)
 
-camera.position.set(0,0.6,.11)
-camera.lookAt(0,0.5,-.9)
-povcamera.position.set(0,1,-0.1)
+povcamera.position.set(0,0.6,.11)
+povcamera.lookAt(0,0.5,-.9)
+camera.position.set(0,1,-0.1)
+camera.lookAt(0,0.5,0)
 scene.add(grid)
 scene.add(worldAxes)
 scene.add(sun)
@@ -220,55 +221,54 @@ function wrapAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 function wheelForce(c,w,throttle,dt = 1/120) {
-     let driveForce = w.isPoweredWheel ? Math.min( w.maxTorque / w.radius * throttle , w.load * CFG.TUNE.staticFriction) : 0
-    // console.log(ccBody.yaw);
-    
-    let rotatedVector = c.FrontWheelDirection.clone().applyAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        (c.steeringAngle + c.yaw)
-    );
+    let vx = c.vx 
+    let vz = c.vz
+    let driveForce = w.isPoweredWheel ? Math.min( w.maxTorque / w.radius * throttle , w.load * CFG.TUNE.staticFriction) : 0
+
 
     let r = w.cordsToCm.clone().applyAxisAngle(
-            new THREE.Vector3(0, 1, 0),
-            c.yaw
-        );
-    let omega = new THREE.Vector3(
-        0,
-        c.angularV,
-        0
+        new THREE.Vector3(0, 1, 0),
+        wrapAngle(c.yaw)
     );
+    w.isPoweredWheel && console.log(r.z);    
+    
+    // let omega = new THREE.Vector3(
+    //     0,
+    //     c.angularV,
+    //     0
+    // );
 
-    let rotationalVelocity = omega.clone().cross(r);
-    let vVector =  new THREE.Vector3(
-        c.vx,
-        0,
-        c.vz
-    ).add(rotationalVelocity);
-    // console.log(vVector.x)
-    let angle = Math.atan2(
-        vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
-        vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
-    );
+    // let rotationalVelocity = omega.clone().cross(r);
+    // let vVector =  new THREE.Vector3(
+    //     c.vx,
+    //     0,
+    //     c.vz
+    // ).add(rotationalVelocity);
+    // // console.log(vVector.x)
+    // let angle = Math.atan2(
+    //     vVector.x  * rotatedVector.z - vVector.z * rotatedVector.x,
+    //     vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
+    // );
 
-    w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
+    // w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
     
     
-    // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * throttle * c.SideVector.x 
-    let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
-    // point.moveTo([w.slipAngle /Math.PI * 180,-lateralForce])  
-    let forceMagnitude = Math.sqrt(
-        driveForce ** 2 + latForce ** 2
-    );
-    if(forceMagnitude >= w.maxStaticFrictionForce){
-        let scale = w.maxStaticFrictionForce / forceMagnitude
-        driveForce *= scale
-        latForce *= scale
-    }
-    let yawPlusSteering =  c.yaw + (w.isPoweredWheel ? c.steeringAngle:0)
+    // // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * throttle * c.SideVector.x 
+    // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
+    // // point.moveTo([w.slipAngle /Math.PI * 180,-lateralForce])  
+    // let forceMagnitude = Math.sqrt(
+    //     driveForce ** 2 + latForce ** 2
+    // );
+    // if(forceMagnitude >= w.maxStaticFrictionForce){
+    //     let scale = w.maxStaticFrictionForce / forceMagnitude
+    //     driveForce *= scale
+    //     latForce *= scale
+    // }
+    // let yawPlusSteering =  c.yaw + (w.isPoweredWheel ? c.steeringAngle:0)
     
     
-    w.Fx = (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
-    w.Fz = driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
+    // w.Fx = (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
+    // w.Fz  = driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
 
     // FzwheelFrictionForce += resultantForce 
     // c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
@@ -495,6 +495,7 @@ function step(dt){
     // ccBody.spin += totalTorqueY / ccBody.Inertia * dt;
     
     // ccBody.yaw += ccBody.spin * dt
+    ccBody.yaw = CFG.yaw
     ccBody.steeringAngle += inputs.steer * 1/2 * PI * dt;
     ccBody.x += +ccBody.vx * dt; ccBody.y += +ccBody.vy * dt; ccBody.z += +ccBody.vz * dt;
 
@@ -508,7 +509,8 @@ function draw(alpha){
     ccScene.children[0].children[0].rotation.y = ccBody.prevSteeringAngle + (ccBody.steeringAngle - ccBody.prevSteeringAngle) * alpha
     // console.log(ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw));
 
-    ccScene.children[0].rotation.y = (ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
+    ccScene.children[0].rotation.y = CFG.yaw 
+    // ccScene.children[0].rotation.y = (ccBody.prevYaw + (ccBody.yaw - ccBody.prevYaw) * alpha)
     cccGroup.position.x = ccBody.prevX + (ccBody.x - ccBody.prevX) * alpha;
     cccGroup.position.y = ccBody.prevY + (ccBody.y - ccBody.prevY) * alpha;
     cccGroup.position.z = ccBody.prevZ + (ccBody.z - ccBody.prevZ) * -alpha;
