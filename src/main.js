@@ -7,7 +7,7 @@ import * as dat from 'dat.gui'
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import * as JXG from 'jsxgraph'
+// import * as JXG from 'jsxgraph'
 
 let width = window.innerWidth
 let height = window.innerHeight
@@ -221,17 +221,35 @@ function wrapAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 function wheelForce(c,w,throttle,dt = 1/120) {
-    let vx = c.vx 
-    let vz = c.vz
+    let vx = c.vx + c.spin * w.cordsToCm.z
+    let vz = c.vz - c.spin * w.cordsToCm.x
+    let v = Math.hypot(vx,vz) 
+           
     let driveForce = w.isPoweredWheel ? Math.min( w.maxTorque / w.radius * throttle , w.load * CFG.TUNE.staticFriction) : 0
 
 
-    let r = w.cordsToCm.clone().applyAxisAngle(
+    let r = w.cordsToCm.clone().applyAxisAngle( // location of the wheel relative to the cart 
         new THREE.Vector3(0, 1, 0),
         wrapAngle(c.yaw)
     );
-    w.isPoweredWheel && console.log(r.z);    
+    if (w.isPoweredWheel){
+        w.heading = ccBody.yaw + ccBody.steeringAngle
+    }else{
+        
+        if(c.bar){
+            
+        }else{
+            if(v > 0.2){
+                let err = wrapAngle((((-Math.atan2(vz, vx))) + Math.PI/ 2 ) - w.heading)                
+                w.heading += wrapAngle(err * CFG.casterAlignRate * dt)
+            }
+            w.heading += wrapAngle(c.yaw - w.heading) * (1- CFG.TUNE.loose)
+        }
+        
+    }
     
+    // w.isPoweredWheel && console.log(r.z);    
+    let slipAngle = wrapAngle(-Math.atan2(vz, vx) - c.heading)
     // let omega = new THREE.Vector3(
     //     0,
     //     c.angularV,
@@ -250,11 +268,11 @@ function wheelForce(c,w,throttle,dt = 1/120) {
     //     vVector.x * rotatedVector.x + vVector.z * rotatedVector.z
     // );
 
-    // w.slipAngle = Number.isNaN(angle) ? 0 : Math.abs(angle) > 0.00001 ? angle:0;
+    w.slipAngle = Number.isNaN(slipAngle) ? 0 : Math.abs(slipAngle) > 0.00001 ? slipAngle:0;
     
     
     // // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * throttle * c.SideVector.x 
-    // let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
+    let latForce = -pacejka(Math.abs(w.slipAngle) /Math.PI * 180,w.maxStaticFrictionForce) * Math.sign(w.slipAngle) * throttle
     // // point.moveTo([w.slipAngle /Math.PI * 180,-lateralForce])  
     // let forceMagnitude = Math.sqrt(
     //     driveForce ** 2 + latForce ** 2
@@ -264,12 +282,12 @@ function wheelForce(c,w,throttle,dt = 1/120) {
     //     driveForce *= scale
     //     latForce *= scale
     // }
-    // let yawPlusSteering =  c.yaw + (w.isPoweredWheel ? c.steeringAngle:0)
     
     
-    // w.Fx = (driveForce * Math.sin(yawPlusSteering) + latForce * Math.cos(yawPlusSteering)) 
-    // w.Fz  = driveForce * Math.cos(yawPlusSteering) - latForce * Math.sin(yawPlusSteering)
+    w.Fx = (driveForce * Math.sin(w.heading) + latForce * Math.cos(w.heading)) 
+    w.Fz  = driveForce * Math.cos(w.heading) - latForce * Math.sin(w.heading)
 
+    
     // FzwheelFrictionForce += resultantForce 
     // c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
     // c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
