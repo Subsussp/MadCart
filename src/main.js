@@ -232,19 +232,29 @@ function wheelForce(c,w,throttle,dt = 1/120) {
         new THREE.Vector3(0, 1, 0),
         wrapAngle(c.yaw)
     );
+    w.r = r
     if (w.isPoweredWheel){
         w.heading = ccBody.yaw + ccBody.steeringAngle
     }else{
         
         if(c.bar){
-            
-        }else{
             if(v > 0.2){
+                console.log(wrapAngle((-Math.atan2(vz, vx))) / PI * 180 + 90);
+                
+                // console.log(wrapAngle((Math.atan2(vz, vx))));
+                
                 let err = wrapAngle((((-Math.atan2(vz, vx))) + Math.PI/ 2 ) - w.heading)                
                 w.heading += wrapAngle(err * CFG.casterAlignRate * dt)
             }
             w.heading += wrapAngle(c.yaw - w.heading) * (1- CFG.TUNE.loose)
         }
+        // }else{
+        //     if(v > 0.2){
+        //         let err = wrapAngle((((-Math.atan2(vz, vx))) + Math.PI/ 2 ) - w.heading)                
+        //         w.heading += wrapAngle(err * CFG.casterAlignRate * dt)
+        //     }
+        //     w.heading += wrapAngle(c.yaw - w.heading) * (1- CFG.TUNE.loose)
+        // }
         
     }
     
@@ -285,9 +295,8 @@ function wheelForce(c,w,throttle,dt = 1/120) {
     
     
     w.Fx = (driveForce * Math.sin(w.heading) + latForce * Math.cos(w.heading)) 
-    w.Fz  = driveForce * Math.cos(w.heading) - latForce * Math.sin(w.heading)
+    w.Fz = driveForce * Math.cos(w.heading) - latForce * Math.sin(w.heading)
 
-    
     // FzwheelFrictionForce += resultantForce 
     // c.FzCart += driveForce * Math.cos(c.steeringAngle) - latForce * Math.sin(c.steeringAngle)
     // c.FxCart += latForce * Math.cos(c.steeringAngle) + driveForce * Math.sin(yawPlusSteering)
@@ -353,6 +362,7 @@ let yaw = statusFolder.add(CFG, "yaw").step(PI / 6).listen();
 isSliding.domElement.style.pointerEvents = "none"
 throttleValue.domElement.style.pointerEvents = "none"
 
+console.log(cccGroup.children[0].children[1].children[4]);
 
 // THROTTLE USING TRACKPAD PRESSURE 
 // let pressure = 0
@@ -418,14 +428,11 @@ function step(dt){
             // There is some issue with the victors here fix it
             // console.log(ccBody.yaw);
             // console.log(vVector.x)
-            // let latForce = -pacejka(Math.abs(wheel.slipAngle) /PI * 180,wheel.maxStaticFrictionForce) * throttle * ccBody.SideVector.x 
             // point.moveTo([wheel.slipAngle /PI * 180,-lateralForce])  
-            // FzwheelFrictionForce += resultantForce 
             FxnetForce += wheel.Fx 
             FznetForce += wheel.Fz 
             
-            
-            // totalTorqueY += wheel.rz *  wheel.Fx  - wheel.rx *  wheel.Fz ;
+            totalTorqueY += wheel.r.z *  wheel.Fx  - wheel.r.x *  wheel.Fz ;
             // let end = new THREE.Vector3(-FxwheelFrictionForce,0, -FzwheelFrictionForce)
             // end.applyQuaternion(ccScene.children[0].children[0].getWorldQuaternion(new THREE.Quaternion()).invert())
             // let points = [
